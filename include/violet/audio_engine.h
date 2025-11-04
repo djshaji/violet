@@ -12,6 +12,7 @@
 #include <atomic>
 #include <thread>
 #include <functional>
+#include <mutex>
 
 namespace violet {
 

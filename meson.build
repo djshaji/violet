@@ -72,6 +72,11 @@ violet_sources = [
   'src/core/config_manager.cpp',
   'src/core/utils.cpp',
   'src/platform/windows_api.cpp',
+  'src/audio/audio_engine.cpp',
+  'src/audio/audio_buffer.cpp',
+  'src/audio/plugin_manager.cpp',
+  'src/audio/midi_handler.cpp',
+  'src/audio/audio_processing_chain.cpp',
 ]
 
 # Create the executable
