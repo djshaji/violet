@@ -272,9 +272,15 @@ void ActivePluginsPanel::OnLButtonDown(int x, int y) {
 void ActivePluginsPanel::OnLButtonDblClk(int x, int y) {
     int index = HitTest(x, y);
     if (index >= 0) {
-        // TODO: Open plugin editor window
-        // For now, just select it
         selectedNodeId_ = plugins_[index].nodeId;
+        
+        // Notify parent window to open plugin parameters
+        HWND parent = GetParent(hwnd_);
+        if (parent) {
+            // Send custom message with node ID
+            // Use WM_USER + 101 for "open plugin parameters"
+            SendMessage(parent, WM_USER + 101, selectedNodeId_, 0);
+        }
     }
 }
 

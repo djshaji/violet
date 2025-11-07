@@ -1,6 +1,7 @@
 #include "violet/main_window.h"
 #include "violet/plugin_browser.h"
 #include "violet/active_plugins_panel.h"
+#include "violet/plugin_parameters_window.h"
 #include "violet/plugin_manager.h"
 #include "violet/audio_engine.h"
 #include "violet/audio_processing_chain.h"
@@ -145,6 +146,13 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     case WM_COMMAND:
         OnCommand(wParam, lParam);
         return 0;
+        
+    case WM_USER + 101: {
+        // Custom message: open plugin parameters
+        uint32_t nodeId = (uint32_t)wParam;
+        ShowPluginParameters(nodeId);
+        return 0;
+    }
         
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
@@ -372,6 +380,27 @@ void MainWindow::LoadPlugin(const std::string& pluginUri) {
         std::wstring status = L"Loaded: " + utils::StringToWString(info.name);
         SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)status.c_str());
     }
+}
+
+void MainWindow::ShowPluginParameters(uint32_t nodeId) {
+    if (!processingChain_ || nodeId == 0) {
+        return;
+    }
+    
+    // Create parameters window if it doesn't exist
+    if (!parametersWindow_) {
+        parametersWindow_ = std::make_unique<PluginParametersWindow>();
+        if (!parametersWindow_->Create(hInstance_, hwnd_)) {
+            parametersWindow_.reset();
+            return;
+        }
+    }
+    
+    // Set the plugin to display
+    parametersWindow_->SetPlugin(processingChain_.get(), nodeId);
+    
+    // Show the window
+    parametersWindow_->Show();
 }
 
 void MainWindow::UpdateLayout() {

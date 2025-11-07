@@ -3,12 +3,14 @@
 #include <windows.h>
 #include <string>
 #include <memory>
+#include <cstdint>
 
 namespace violet {
 
 // Forward declarations
 class PluginBrowser;
 class ActivePluginsPanel;
+class PluginParametersWindow;
 class PluginManager;
 class AudioEngine;
 class AudioProcessingChain;
@@ -55,6 +57,7 @@ private:
     
     // Plugin management
     void LoadPlugin(const std::string& pluginUri);
+    void ShowPluginParameters(uint32_t nodeId);
     
     // Member variables
     HWND hwnd_;
@@ -65,6 +68,7 @@ private:
     // Child windows
     std::unique_ptr<PluginBrowser> pluginBrowser_;
     std::unique_ptr<ActivePluginsPanel> activePluginsPanel_;
+    std::unique_ptr<PluginParametersWindow> parametersWindow_;
     
     // Backend components (to be initialized)
     std::unique_ptr<PluginManager> pluginManager_;

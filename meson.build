@@ -71,6 +71,7 @@ violet_sources = [
   'src/ui/main_window.cpp',
   'src/ui/plugin_browser.cpp',
   'src/ui/active_plugins_panel.cpp',
+  'src/ui/plugin_parameters_window.cpp',
   'src/core/config_manager.cpp',
   'src/core/utils.cpp',
   'src/platform/windows_api.cpp',
