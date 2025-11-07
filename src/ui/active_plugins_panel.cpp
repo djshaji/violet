@@ -15,6 +15,7 @@ const wchar_t* ActivePluginsPanel::CLASS_NAME = L"VioletActivePluginsPanel";
 ActivePluginsPanel::ActivePluginsPanel()
     : hwnd_(nullptr)
     , hInstance_(nullptr)
+    , removeAllButton_(nullptr)
     , processingChain_(nullptr)
     , selectedNodeId_(0)
     , hoveredPluginIndex_(-1)
@@ -93,8 +94,13 @@ void ActivePluginsPanel::AddPlugin(uint32_t nodeId, const std::string& name, con
     plugin.expanded = true;  // Auto-expand to show controls
     plugin.yPos = 0;
     plugin.height = PLUGIN_HEADER_HEIGHT;
+    plugin.bypassButton = nullptr;
+    plugin.removeButton = nullptr;
     
     plugins_.push_back(plugin);
+    
+    // Create header buttons
+    CreateHeaderButtons(plugins_.back());
     
     // Create parameter controls immediately
     CreateParameterControls(plugins_.back());
@@ -113,6 +119,7 @@ void ActivePluginsPanel::RemovePlugin(uint32_t nodeId) {
                           });
     
     if (it != plugins_.end()) {
+        DestroyHeaderButtons(*it);
         DestroyParameterControls(*it);
         plugins_.erase(it);
         RecalculateLayout();
@@ -129,10 +136,12 @@ void ActivePluginsPanel::RemovePlugin(uint32_t nodeId) {
 
 void ActivePluginsPanel::ClearPlugins() {
     for (auto& plugin : plugins_) {
+        DestroyHeaderButtons(plugin);
         DestroyParameterControls(plugin);
     }
     plugins_.clear();
     sliderToParam_.clear();
+    buttonToNode_.clear();
     selectedNodeId_ = 0;
     hoveredPluginIndex_ = -1;
     
@@ -167,6 +176,56 @@ void ActivePluginsPanel::Resize(int x, int y, int width, int height) {
     if (hwnd_) {
         SetWindowPos(hwnd_, nullptr, x, y, width, height, SWP_NOZORDER);
         RecalculateLayout();
+    }
+}
+
+void ActivePluginsPanel::CreateHeaderButtons(ActivePluginInfo& plugin) {
+    if (!hwnd_) return;
+    
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    RECT clientRect;
+    GetClientRect(hwnd_, &clientRect);
+    int clientWidth = clientRect.right - clientRect.left;
+    
+    int y = plugin.yPos - scrollPos_;
+    int buttonY = y + (PLUGIN_HEADER_HEIGHT - BUTTON_HEIGHT) / 2;
+    
+    // Bypass button (right side, before remove button)
+    plugin.bypassButton = CreateWindowEx(
+        0, L"BUTTON",
+        plugin.bypassed ? L"Enable" : L"Bypass",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        clientWidth - MARGIN - (BUTTON_WIDTH * 2 + 10), buttonY,
+        BUTTON_WIDTH, BUTTON_HEIGHT,
+        hwnd_, (HMENU)(UINT_PTR)(ID_BUTTON_BYPASS_BASE + plugin.nodeId),
+        hInstance_, nullptr
+    );
+    SendMessage(plugin.bypassButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+    buttonToNode_[plugin.bypassButton] = plugin.nodeId;
+    
+    // Remove button (rightmost)
+    plugin.removeButton = CreateWindowEx(
+        0, L"BUTTON", L"Remove",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        clientWidth - MARGIN - BUTTON_WIDTH, buttonY,
+        BUTTON_WIDTH, BUTTON_HEIGHT,
+        hwnd_, (HMENU)(UINT_PTR)(ID_BUTTON_REMOVE_BASE + plugin.nodeId),
+        hInstance_, nullptr
+    );
+    SendMessage(plugin.removeButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+    buttonToNode_[plugin.removeButton] = plugin.nodeId;
+}
+
+void ActivePluginsPanel::DestroyHeaderButtons(ActivePluginInfo& plugin) {
+    if (plugin.bypassButton) {
+        buttonToNode_.erase(plugin.bypassButton);
+        DestroyWindow(plugin.bypassButton);
+        plugin.bypassButton = nullptr;
+    }
+    if (plugin.removeButton) {
+        buttonToNode_.erase(plugin.removeButton);
+        DestroyWindow(plugin.removeButton);
+        plugin.removeButton = nullptr;
     }
 }
 
@@ -414,7 +473,16 @@ LRESULT ActivePluginsPanel::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lPara
 }
 
 void ActivePluginsPanel::OnCreate() {
-    // Nothing specific to initialize
+    // Create "Remove All" button at the top
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    
+    removeAllButton_ = CreateWindowEx(
+        0, L"BUTTON", L"Remove All Plugins",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        MARGIN, 5, 150, 25,
+        hwnd_, (HMENU)(UINT_PTR)ID_BUTTON_REMOVE_ALL, hInstance_, nullptr
+    );
+    SendMessage(removeAllButton_, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
 
 void ActivePluginsPanel::OnPaint() {
@@ -484,9 +552,61 @@ void ActivePluginsPanel::OnMouseMove(int x, int y) {
 }
 
 void ActivePluginsPanel::OnCommand(WPARAM wParam, LPARAM lParam) {
-    (void)lParam;
     int wmId = LOWORD(wParam);
+    HWND hwndCtl = reinterpret_cast<HWND>(lParam);
     
+    // Check for Remove All button
+    if (wmId == ID_BUTTON_REMOVE_ALL) {
+        if (processingChain_) {
+            // Remove all plugins from chain
+            auto nodeIds = processingChain_->GetNodeIds();
+            for (auto nodeId : nodeIds) {
+                processingChain_->RemovePlugin(nodeId);
+            }
+        }
+        ClearPlugins();
+        InvalidateRect(hwnd_, nullptr, TRUE);
+        return;
+    }
+    
+    // Check for plugin-specific buttons
+    auto btnIt = buttonToNode_.find(hwndCtl);
+    if (btnIt != buttonToNode_.end()) {
+        uint32_t nodeId = btnIt->second;
+        
+        // Determine if it's bypass or remove based on button ID
+        if (wmId >= ID_BUTTON_BYPASS_BASE && wmId < ID_BUTTON_REMOVE_BASE) {
+            // Bypass button clicked
+            if (processingChain_) {
+                ProcessingNode* node = processingChain_->GetNode(nodeId);
+                if (node) {
+                    bool bypassed = node->IsBypassed();
+                    node->SetBypassed(!bypassed);
+                    
+                    // Update button text
+                    for (auto& plugin : plugins_) {
+                        if (plugin.nodeId == nodeId) {
+                            plugin.bypassed = !bypassed;
+                            SetWindowText(plugin.bypassButton, 
+                                        plugin.bypassed ? L"Enable" : L"Bypass");
+                            break;
+                        }
+                    }
+                    InvalidateRect(hwnd_, nullptr, TRUE);
+                }
+            }
+        } else if (wmId >= ID_BUTTON_REMOVE_BASE) {
+            // Remove button clicked
+            if (processingChain_) {
+                processingChain_->RemovePlugin(nodeId);
+            }
+            RemovePlugin(nodeId);
+            InvalidateRect(hwnd_, nullptr, TRUE);
+        }
+        return;
+    }
+    
+    // Handle menu commands
     switch (wmId) {
     case ID_MENU_REMOVE:
         if (selectedNodeId_ != 0 && processingChain_) {
@@ -636,11 +756,33 @@ void ActivePluginsPanel::RecalculateLayout() {
     RECT clientRect;
     GetClientRect(hwnd_, &clientRect);
     int clientHeight = clientRect.bottom - clientRect.top;
+    int clientWidth = clientRect.right - clientRect.left;
     
-    int currentY = MARGIN;
+    // Position Remove All button at the top
+    if (removeAllButton_) {
+        SetWindowPos(removeAllButton_, nullptr, MARGIN, 5, 0, 0,
+                   SWP_NOSIZE | SWP_NOZORDER);
+    }
+    
+    int currentY = 40;  // Start below Remove All button
     
     for (auto& plugin : plugins_) {
         plugin.yPos = currentY;
+        
+        // Update header button positions
+        int y = plugin.yPos - scrollPos_;
+        int buttonY = y + (PLUGIN_HEADER_HEIGHT - BUTTON_HEIGHT) / 2;
+        
+        if (plugin.bypassButton) {
+            SetWindowPos(plugin.bypassButton, nullptr,
+                       clientWidth - MARGIN - (BUTTON_WIDTH * 2 + 10), buttonY,
+                       0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        }
+        if (plugin.removeButton) {
+            SetWindowPos(plugin.removeButton, nullptr,
+                       clientWidth - MARGIN - BUTTON_WIDTH, buttonY,
+                       0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        }
         
         // Update control positions
         for (auto& control : plugin.parameters) {

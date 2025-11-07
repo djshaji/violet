@@ -16,7 +16,7 @@
 - ✅ **Configuration System**: INI-style config file with save/load functionality
 - ✅ **Basic Window**: Main window with menu bar, status bar, toolbar skeleton
 - ✅ **Plugin Browser**: Tree view with search, category grouping, plugin selection
-- ✅ **Active Plugins Panel**: Vertical list with inline parameter controls (sliders), real-time updates
+- ✅ **Active Plugins Panel**: Vertical list with inline parameter controls (sliders), real-time updates, bypass/remove buttons
 - ✅ **Plugin Parameters Window**: Floating window with sliders for real-time parameter control (November 7, 2025)
 
 ### In Progress 🔄
@@ -194,11 +194,14 @@ violet/
 3. **Active Plugins Panel** ✅ COMPLETED
    - ✅ Display loaded plugins in vertical list with headers
    - ✅ Inline parameter controls (sliders, labels, values)
+   - ✅ Bypass button on each plugin header
+   - ✅ Remove button on each plugin header
+   - ✅ Remove All button to clear all plugins
    - ✅ Real-time parameter adjustment directly in panel
    - ✅ Auto-expand plugins to show all parameters
    - ✅ Toggle expansion with double-click on header
-   - ✅ Plugin enable/disable toggle (via context menu)
-   - ✅ Plugin removal functionality (via context menu)
+   - ✅ Plugin enable/disable toggle (via button or context menu)
+   - ✅ Plugin removal functionality (via button or context menu)
    - ✅ Plugin loading via double-click from browser
    - ✅ Scrollable list for many plugins/parameters
 

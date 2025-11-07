@@ -34,6 +34,8 @@ struct ActivePluginInfo {
     bool expanded;  // Show parameters
     int yPos;
     int height;
+    HWND bypassButton;
+    HWND removeButton;
     std::vector<InlineParameterControl> parameters;
 };
 
@@ -96,6 +98,8 @@ private:
     void CreateParameterControls(ActivePluginInfo& plugin);
     void DestroyParameterControls(ActivePluginInfo& plugin);
     void UpdateParameterControls(ActivePluginInfo& plugin);
+    void CreateHeaderButtons(ActivePluginInfo& plugin);
+    void DestroyHeaderButtons(ActivePluginInfo& plugin);
     void TogglePluginExpanded(size_t pluginIndex);
     void OnSliderChange(HWND slider);
     void UpdateParameterValue(uint32_t nodeId, uint32_t paramIndex);
@@ -114,6 +118,7 @@ private:
     // Member variables
     HWND hwnd_;
     HINSTANCE hInstance_;
+    HWND removeAllButton_;
     
     AudioProcessingChain* processingChain_;
     std::vector<ActivePluginInfo> plugins_;
@@ -123,13 +128,16 @@ private:
     
     // Slider tracking
     std::map<HWND, std::pair<uint32_t, uint32_t>> sliderToParam_;  // slider -> (nodeId, paramIndex)
+    std::map<HWND, uint32_t> buttonToNode_;  // button -> nodeId
     
     // Scroll position
     int scrollPos_;
     int maxScrollPos_;
     
     // Layout properties
-    static const int PLUGIN_HEADER_HEIGHT = 40;
+    static const int PLUGIN_HEADER_HEIGHT = 45;
+    static const int BUTTON_WIDTH = 70;
+    static const int BUTTON_HEIGHT = 24;
     static const int PARAM_HEIGHT = 50;
     static const int PLUGIN_SPACING = 5;
     static const int MARGIN = 10;
@@ -151,6 +159,11 @@ private:
     static const int ID_MENU_EDIT = 2003;
     static const int ID_MENU_MOVE_UP = 2004;
     static const int ID_MENU_MOVE_DOWN = 2005;
+    
+    // Button IDs
+    static const int ID_BUTTON_REMOVE_ALL = 3001;
+    static const int ID_BUTTON_BYPASS_BASE = 4000;  // + nodeId
+    static const int ID_BUTTON_REMOVE_BASE = 5000;  // + nodeId
 };
 
 } // namespace violet
