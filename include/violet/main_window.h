@@ -6,6 +6,13 @@
 
 namespace violet {
 
+// Forward declarations
+class PluginBrowser;
+class ActivePluginsPanel;
+class PluginManager;
+class AudioEngine;
+class AudioProcessingChain;
+
 class MainWindow {
 public:
     MainWindow();
@@ -46,11 +53,23 @@ private:
     // Layout management
     void UpdateLayout();
     
+    // Plugin management
+    void LoadPlugin(const std::string& pluginUri);
+    
     // Member variables
     HWND hwnd_;
     HWND hStatusBar_;
     HWND hToolBar_;
     HINSTANCE hInstance_;
+    
+    // Child windows
+    std::unique_ptr<PluginBrowser> pluginBrowser_;
+    std::unique_ptr<ActivePluginsPanel> activePluginsPanel_;
+    
+    // Backend components (to be initialized)
+    std::unique_ptr<PluginManager> pluginManager_;
+    std::unique_ptr<AudioEngine> audioEngine_;
+    std::unique_ptr<AudioProcessingChain> processingChain_;
     
     // Window properties
     static const wchar_t* CLASS_NAME;
@@ -58,6 +77,7 @@ private:
     static const int DEFAULT_HEIGHT = 700;
     static const int MIN_WIDTH = 800;
     static const int MIN_HEIGHT = 600;
+    static const int PLUGIN_BROWSER_WIDTH = 250;
 };
 
 } // namespace violet

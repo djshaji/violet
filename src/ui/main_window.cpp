@@ -1,4 +1,10 @@
 #include "violet/main_window.h"
+#include "violet/plugin_browser.h"
+#include "violet/active_plugins_panel.h"
+#include "violet/plugin_manager.h"
+#include "violet/audio_engine.h"
+#include "violet/audio_processing_chain.h"
+#include "violet/utils.h"
 #include "violet/resource.h"
 #include <commctrl.h>
 #include <windowsx.h>
@@ -141,7 +147,19 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
         return 0;
         
     case WM_NOTIFY: {
+        NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
+        
         // Handle notifications from child controls
+        // Check if it's a double-click notification
+        if (pnmhdr->code == NM_DBLCLK) {
+            // Check if it came from plugin browser's tree view
+            if (pluginBrowser_) {
+                std::string pluginUri = pluginBrowser_->GetSelectedPluginUri();
+                if (!pluginUri.empty()) {
+                    LoadPlugin(pluginUri);
+                }
+            }
+        }
         return 0;
     }
     
@@ -151,12 +169,36 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 void MainWindow::OnCreate() {
-    // Create child controls
+    // Initialize backend components
+    pluginManager_ = std::make_unique<PluginManager>();
+    if (pluginManager_) {
+        pluginManager_->Initialize();
+    }
+    
+    audioEngine_ = std::make_unique<AudioEngine>();
+    if (audioEngine_) {
+        audioEngine_->Initialize();
+    }
+    
+    processingChain_ = std::make_unique<AudioProcessingChain>(audioEngine_.get());
+    if (processingChain_) {
+        // Set default format
+        processingChain_->SetFormat(44100, 2, 256);
+    }
+    
+    // Create UI components
     CreateMenuBar();
     CreateToolBar();
     CreateStatusBar();
     CreateControls();
     UpdateLayout();
+    
+    // Update status bar with initial state
+    if (hStatusBar_) {
+        std::wstring pluginCount = L"Plugins: " + std::to_wstring(
+            pluginManager_ ? pluginManager_->GetAvailablePlugins().size() : 0);
+        SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)pluginCount.c_str());
+    }
 }
 
 void MainWindow::OnDestroy() {
@@ -202,8 +244,34 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
 }
 
 void MainWindow::CreateControls() {
-    // TODO: Create plugin browser panel, active plugins panel, etc.
-    // For now, this is just a placeholder
+    // Create plugin browser on the left side
+    pluginBrowser_ = std::make_unique<PluginBrowser>();
+    if (pluginBrowser_) {
+        RECT clientRect;
+        GetClientRect(hwnd_, &clientRect);
+        
+        pluginBrowser_->Create(hwnd_, hInstance_, 0, 0, PLUGIN_BROWSER_WIDTH, 
+                              clientRect.bottom - clientRect.top);
+        
+        if (pluginManager_) {
+            pluginBrowser_->SetPluginManager(pluginManager_.get());
+        }
+    }
+    
+    // Create active plugins panel on the right side
+    activePluginsPanel_ = std::make_unique<ActivePluginsPanel>();
+    if (activePluginsPanel_) {
+        RECT clientRect;
+        GetClientRect(hwnd_, &clientRect);
+        
+        activePluginsPanel_->Create(hwnd_, hInstance_, PLUGIN_BROWSER_WIDTH, 0,
+                                   clientRect.right - PLUGIN_BROWSER_WIDTH,
+                                   clientRect.bottom - clientRect.top);
+        
+        if (processingChain_) {
+            activePluginsPanel_->SetProcessingChain(processingChain_.get());
+        }
+    }
 }
 
 void MainWindow::CreateMenuBar() {
@@ -278,6 +346,34 @@ void MainWindow::CreateToolBar() {
     }
 }
 
+void MainWindow::LoadPlugin(const std::string& pluginUri) {
+    if (!processingChain_ || !pluginManager_ || !activePluginsPanel_) {
+        return;
+    }
+    
+    // Get plugin info
+    PluginInfo info = pluginManager_->GetPluginInfo(pluginUri);
+    if (info.uri.empty()) {
+        return;
+    }
+    
+    // Add plugin to processing chain
+    uint32_t nodeId = processingChain_->AddPlugin(pluginUri);
+    if (nodeId == 0) {
+        MessageBox(hwnd_, L"Failed to load plugin", L"Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Add plugin to visual display
+    activePluginsPanel_->AddPlugin(nodeId, info.name, pluginUri);
+    
+    // Update status bar
+    if (hStatusBar_) {
+        std::wstring status = L"Loaded: " + utils::StringToWString(info.name);
+        SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)status.c_str());
+    }
+}
+
 void MainWindow::UpdateLayout() {
     if (!hwnd_) return;
     
@@ -303,8 +399,21 @@ void MainWindow::UpdateLayout() {
         statusBarHeight = statusRect.bottom - statusRect.top;
     }
     
-    // TODO: Layout plugin browser and active plugins panels
-    // in the remaining client area
+    // Calculate available client area
+    int availableTop = toolbarHeight;
+    int availableHeight = clientRect.bottom - toolbarHeight - statusBarHeight;
+    int availableWidth = clientRect.right;
+    
+    // Layout plugin browser on the left
+    if (pluginBrowser_) {
+        pluginBrowser_->Resize(0, availableTop, PLUGIN_BROWSER_WIDTH, availableHeight);
+    }
+    
+    // Layout active plugins panel on the right
+    if (activePluginsPanel_) {
+        activePluginsPanel_->Resize(PLUGIN_BROWSER_WIDTH, availableTop,
+                                   availableWidth - PLUGIN_BROWSER_WIDTH, availableHeight);
+    }
 }
 
 } // namespace violet

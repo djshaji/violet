@@ -346,8 +346,39 @@ void PluginManager::InitializeLilv() {
         return;
     }
     
+    // Set LV2_PATH environment variable to current directory
+    char currentDir[MAX_PATH];
+    if (GetCurrentDirectoryA(MAX_PATH, currentDir)) {
+        std::string lv2Path = "LV2_PATH=" + std::string(currentDir) + "/lv2";
+        putenv(const_cast<char*>(lv2Path.c_str()));
+        std::cout << "LV2_PATH set to: " << currentDir << std::endl;
+    } else {
+        std::cerr << "Failed to get current directory" << std::endl;
+    }
+
     lilv_world_load_all(world_);
     plugins_ = lilv_world_get_all_plugins(world_);
+    
+    // Print all found plugins
+    if (plugins_) {
+        unsigned int pluginCount = lilv_plugins_size(plugins_);
+        std::cout << "Found " << pluginCount << " LV2 plugins:" << std::endl;
+        
+        LILV_FOREACH(plugins, iter, plugins_) {
+            const LilvPlugin* plugin = lilv_plugins_get(plugins_, iter);
+            const LilvNode* nameNode = lilv_plugin_get_name(plugin);
+            const LilvNode* uriNode = lilv_plugin_get_uri(plugin);
+            
+            std::string name = nameNode ? lilv_node_as_string(nameNode) : "Unknown";
+            std::string uri = uriNode ? lilv_node_as_string(uriNode) : "Unknown";
+            
+            std::cout << "  - " << name << " (" << uri << ")" << std::endl;
+            
+            if (nameNode) lilv_node_free(const_cast<LilvNode*>(nameNode));
+        }
+    } else {
+        std::cout << "No LV2 plugins found" << std::endl;
+    }
 }
 
 void PluginManager::ShutdownLilv() {

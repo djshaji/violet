@@ -12,6 +12,7 @@
 #include <memory>
 #include <map>
 #include <functional>
+#include <windows.h>
 #include "violet/audio_buffer.h"
 
 namespace violet {

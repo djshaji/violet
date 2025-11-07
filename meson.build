@@ -69,6 +69,8 @@ inc_dirs = include_directories('include')
 violet_sources = [
   'src/main.cpp',
   'src/ui/main_window.cpp',
+  'src/ui/plugin_browser.cpp',
+  'src/ui/active_plugins_panel.cpp',
   'src/core/config_manager.cpp',
   'src/core/utils.cpp',
   'src/platform/windows_api.cpp',
