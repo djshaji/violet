@@ -1,15 +1,28 @@
 #pragma once
 
 #include <windows.h>
+#include <commctrl.h>
 #include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
+#include "violet/plugin_manager.h"
 
 namespace violet {
 
 class AudioProcessingChain;
 class PluginInstance;
+
+// Parameter control for inline display
+struct InlineParameterControl {
+    uint32_t parameterIndex;
+    ParameterInfo info;
+    HWND labelStatic;
+    HWND valueStatic;
+    HWND slider;
+    int yOffset;  // Offset from plugin top
+};
 
 // Represents a plugin in the active chain
 struct ActivePluginInfo {
@@ -18,10 +31,10 @@ struct ActivePluginInfo {
     std::string uri;
     bool bypassed;
     bool active;
-    int xPos;
+    bool expanded;  // Show parameters
     int yPos;
-    int width;
     int height;
+    std::vector<InlineParameterControl> parameters;
 };
 
 // Active Plugins Panel - displays the plugin processing chain
@@ -71,11 +84,23 @@ private:
     void OnRButtonDown(int x, int y);
     void OnMouseMove(int x, int y);
     void OnCommand(WPARAM wParam, LPARAM lParam);
+    void OnHScroll(WPARAM wParam, LPARAM lParam);
+    void OnVScroll(WPARAM wParam, LPARAM lParam);
+    void OnTimer(WPARAM timerId);
     
     // Drawing functions
     void DrawPlugin(HDC hdc, const ActivePluginInfo& plugin);
-    void DrawConnection(HDC hdc, const ActivePluginInfo& from, const ActivePluginInfo& to);
     void DrawEmptyState(HDC hdc);
+    
+    // Parameter control functions
+    void CreateParameterControls(ActivePluginInfo& plugin);
+    void DestroyParameterControls(ActivePluginInfo& plugin);
+    void UpdateParameterControls(ActivePluginInfo& plugin);
+    void TogglePluginExpanded(size_t pluginIndex);
+    void OnSliderChange(HWND slider);
+    void UpdateParameterValue(uint32_t nodeId, uint32_t paramIndex);
+    float SliderPosToValue(int pos, const ParameterInfo& info);
+    int ValueToSliderPos(float value, const ParameterInfo& info);
     
     // Hit testing
     int HitTest(int x, int y) const;
@@ -96,11 +121,26 @@ private:
     uint32_t selectedNodeId_;
     int hoveredPluginIndex_;
     
+    // Slider tracking
+    std::map<HWND, std::pair<uint32_t, uint32_t>> sliderToParam_;  // slider -> (nodeId, paramIndex)
+    
+    // Scroll position
+    int scrollPos_;
+    int maxScrollPos_;
+    
     // Layout properties
-    static const int PLUGIN_WIDTH = 120;
-    static const int PLUGIN_HEIGHT = 80;
-    static const int PLUGIN_SPACING = 20;
-    static const int MARGIN = 20;
+    static const int PLUGIN_HEADER_HEIGHT = 40;
+    static const int PARAM_HEIGHT = 50;
+    static const int PLUGIN_SPACING = 5;
+    static const int MARGIN = 10;
+    static const int SLIDER_WIDTH = 200;
+    static const int VALUE_WIDTH = 60;
+    static const int LABEL_WIDTH = 150;
+    static const int SLIDER_RESOLUTION = 1000;
+    
+    // Update timer
+    static const int TIMER_ID_UPDATE = 2;
+    static const int UPDATE_INTERVAL_MS = 100;
     
     // Window class
     static const wchar_t* CLASS_NAME;

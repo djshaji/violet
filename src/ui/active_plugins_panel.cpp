@@ -4,6 +4,9 @@
 #include "violet/utils.h"
 #include <windowsx.h>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
+#include <cmath>
 
 namespace violet {
 
@@ -14,10 +17,17 @@ ActivePluginsPanel::ActivePluginsPanel()
     , hInstance_(nullptr)
     , processingChain_(nullptr)
     , selectedNodeId_(0)
-    , hoveredPluginIndex_(-1) {
+    , hoveredPluginIndex_(-1)
+    , scrollPos_(0)
+    , maxScrollPos_(0) {
 }
 
 ActivePluginsPanel::~ActivePluginsPanel() {
+    // Destroy all parameter controls
+    for (auto& plugin : plugins_) {
+        DestroyParameterControls(plugin);
+    }
+    
     if (hwnd_) {
         DestroyWindow(hwnd_);
     }
@@ -44,12 +54,12 @@ bool ActivePluginsPanel::Create(HWND parent, HINSTANCE hInstance, int x, int y, 
         }
     }
     
-    // Create the window
+    // Create the window with scrollbar
     hwnd_ = CreateWindowEx(
         0,
         CLASS_NAME,
         L"Active Plugins",
-        WS_CHILD | WS_VISIBLE | WS_BORDER,
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL,
         x, y, width, height,
         parent,
         nullptr,
@@ -62,6 +72,9 @@ bool ActivePluginsPanel::Create(HWND parent, HINSTANCE hInstance, int x, int y, 
     }
     
     SetWindowLongPtr(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
+    
+    // Start update timer
+    SetTimer(hwnd_, TIMER_ID_UPDATE, UPDATE_INTERVAL_MS, nullptr);
     
     return true;
 }
@@ -77,12 +90,15 @@ void ActivePluginsPanel::AddPlugin(uint32_t nodeId, const std::string& name, con
     plugin.uri = uri;
     plugin.bypassed = false;
     plugin.active = true;
-    plugin.xPos = 0;
+    plugin.expanded = true;  // Auto-expand to show controls
     plugin.yPos = 0;
-    plugin.width = PLUGIN_WIDTH;
-    plugin.height = PLUGIN_HEIGHT;
+    plugin.height = PLUGIN_HEADER_HEIGHT;
     
     plugins_.push_back(plugin);
+    
+    // Create parameter controls immediately
+    CreateParameterControls(plugins_.back());
+    
     RecalculateLayout();
     
     if (hwnd_) {
@@ -97,6 +113,7 @@ void ActivePluginsPanel::RemovePlugin(uint32_t nodeId) {
                           });
     
     if (it != plugins_.end()) {
+        DestroyParameterControls(*it);
         plugins_.erase(it);
         RecalculateLayout();
         
@@ -111,7 +128,11 @@ void ActivePluginsPanel::RemovePlugin(uint32_t nodeId) {
 }
 
 void ActivePluginsPanel::ClearPlugins() {
+    for (auto& plugin : plugins_) {
+        DestroyParameterControls(plugin);
+    }
     plugins_.clear();
+    sliderToParam_.clear();
     selectedNodeId_ = 0;
     hoveredPluginIndex_ = -1;
     
@@ -122,16 +143,17 @@ void ActivePluginsPanel::ClearPlugins() {
 
 void ActivePluginsPanel::Refresh() {
     if (processingChain_) {
-        // Sync with actual chain state
         auto nodeIds = processingChain_->GetNodeIds();
         
-        // Remove plugins that no longer exist in chain
-        plugins_.erase(
-            std::remove_if(plugins_.begin(), plugins_.end(),
-                          [&nodeIds](const ActivePluginInfo& p) {
-                              return std::find(nodeIds.begin(), nodeIds.end(), p.nodeId) == nodeIds.end();
-                          }),
-            plugins_.end());
+        // Remove plugins that no longer exist
+        for (auto it = plugins_.begin(); it != plugins_.end(); ) {
+            if (std::find(nodeIds.begin(), nodeIds.end(), it->nodeId) == nodeIds.end()) {
+                DestroyParameterControls(*it);
+                it = plugins_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         
         RecalculateLayout();
     }
@@ -148,20 +170,193 @@ void ActivePluginsPanel::Resize(int x, int y, int width, int height) {
     }
 }
 
-LRESULT CALLBACK ActivePluginsPanel::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    ActivePluginsPanel* pThis = nullptr;
+void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
+    if (!processingChain_ || !hwnd_) return;
     
-    if (uMsg == WM_NCCREATE) {
-        CREATESTRUCT* pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
-        pThis = reinterpret_cast<ActivePluginsPanel*>(pCreate->lpCreateParams);
-        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pThis));
-        pThis->hwnd_ = hwnd;
-    } else {
-        pThis = reinterpret_cast<ActivePluginsPanel*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    ProcessingNode* node = processingChain_->GetNode(plugin.nodeId);
+    if (!node) return;
+    
+    PluginInstance* instance = node->GetPlugin();
+    if (!instance) return;
+    
+    std::vector<ParameterInfo> params = instance->GetParameters();
+    
+    HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+    int yOffset = PLUGIN_HEADER_HEIGHT;
+    
+    for (const auto& param : params) {
+        InlineParameterControl control;
+        control.parameterIndex = param.index;
+        control.info = param;
+        control.yOffset = yOffset;
+        
+        int absoluteY = plugin.yPos + yOffset - scrollPos_;
+        
+        // Parameter label
+        control.labelStatic = CreateWindowEx(
+            0, L"STATIC",
+            utils::StringToWString(param.name).c_str(),
+            WS_CHILD | WS_VISIBLE | SS_LEFT,
+            MARGIN, absoluteY,
+            LABEL_WIDTH, 20,
+            hwnd_, nullptr, hInstance_, nullptr
+        );
+        SendMessage(control.labelStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
+        
+        // Value display
+        float currentValue = instance->GetParameter(param.index);
+        std::wstringstream ss;
+        ss << std::fixed << std::setprecision(param.isInteger ? 0 : 2) << currentValue;
+        
+        control.valueStatic = CreateWindowEx(
+            0, L"STATIC",
+            ss.str().c_str(),
+            WS_CHILD | WS_VISIBLE | SS_CENTER,
+            MARGIN + LABEL_WIDTH + 10, absoluteY,
+            VALUE_WIDTH, 20,
+            hwnd_, nullptr, hInstance_, nullptr
+        );
+        SendMessage(control.valueStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
+        
+        // Slider
+        control.slider = CreateWindowEx(
+            0, TRACKBAR_CLASS, L"",
+            WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS | TBS_NOTICKS,
+            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY + 2,
+            SLIDER_WIDTH, 20,
+            hwnd_, nullptr, hInstance_, nullptr
+        );
+        
+        SendMessage(control.slider, TBM_SETRANGE, TRUE, MAKELONG(0, SLIDER_RESOLUTION));
+        int sliderPos = ValueToSliderPos(currentValue, param);
+        SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
+        
+        sliderToParam_[control.slider] = std::make_pair(plugin.nodeId, param.index);
+        
+        plugin.parameters.push_back(control);
+        yOffset += PARAM_HEIGHT;
     }
     
-    if (pThis) {
-        return pThis->HandleMessage(uMsg, wParam, lParam);
+    plugin.height = yOffset;
+}
+
+void ActivePluginsPanel::DestroyParameterControls(ActivePluginInfo& plugin) {
+    for (auto& control : plugin.parameters) {
+        if (control.labelStatic) {
+            sliderToParam_.erase(control.slider);
+            DestroyWindow(control.labelStatic);
+        }
+        if (control.valueStatic) DestroyWindow(control.valueStatic);
+        if (control.slider) DestroyWindow(control.slider);
+    }
+    plugin.parameters.clear();
+    plugin.height = PLUGIN_HEADER_HEIGHT;
+}
+
+void ActivePluginsPanel::UpdateParameterControls(ActivePluginInfo& plugin) {
+    if (!processingChain_) return;
+    
+    ProcessingNode* node = processingChain_->GetNode(plugin.nodeId);
+    if (!node) return;
+    
+    PluginInstance* instance = node->GetPlugin();
+    if (!instance) return;
+    
+    for (auto& control : plugin.parameters) {
+        float value = instance->GetParameter(control.parameterIndex);
+        
+        // Update value display
+        std::wstringstream ss;
+        ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
+        SetWindowText(control.valueStatic, ss.str().c_str());
+        
+        // Update slider position
+        int sliderPos = ValueToSliderPos(value, control.info);
+        SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
+    }
+}
+
+void ActivePluginsPanel::TogglePluginExpanded(size_t pluginIndex) {
+    if (pluginIndex >= plugins_.size()) return;
+    
+    auto& plugin = plugins_[pluginIndex];
+    plugin.expanded = !plugin.expanded;
+    
+    if (plugin.expanded) {
+        CreateParameterControls(plugin);
+    } else {
+        DestroyParameterControls(plugin);
+    }
+    
+    RecalculateLayout();
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void ActivePluginsPanel::OnSliderChange(HWND slider) {
+    auto it = sliderToParam_.find(slider);
+    if (it == sliderToParam_.end()) return;
+    
+    uint32_t nodeId = it->second.first;
+    uint32_t paramIndex = it->second.second;
+    
+    // Find the plugin and parameter info
+    for (auto& plugin : plugins_) {
+        if (plugin.nodeId == nodeId) {
+            for (auto& control : plugin.parameters) {
+                if (control.parameterIndex == paramIndex) {
+                    int sliderPos = (int)SendMessage(slider, TBM_GETPOS, 0, 0);
+                    float value = SliderPosToValue(sliderPos, control.info);
+                    
+                    if (processingChain_) {
+                        processingChain_->SetParameter(nodeId, paramIndex, value);
+                    }
+                    
+                    // Update value display
+                    std::wstringstream ss;
+                    ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
+                    SetWindowText(control.valueStatic, ss.str().c_str());
+                    
+                    return;
+                }
+            }
+        }
+    }
+}
+
+float ActivePluginsPanel::SliderPosToValue(int pos, const ParameterInfo& info) {
+    float normalized = (float)pos / (float)SLIDER_RESOLUTION;
+    float value = info.minimum + normalized * (info.maximum - info.minimum);
+    
+    if (info.isInteger) {
+        value = std::round(value);
+    }
+    
+    return std::max(info.minimum, std::min(info.maximum, value));
+}
+
+int ActivePluginsPanel::ValueToSliderPos(float value, const ParameterInfo& info) {
+    float range = info.maximum - info.minimum;
+    if (range <= 0.0f) return 0;
+    
+    float normalized = (value - info.minimum) / range;
+    normalized = std::max(0.0f, std::min(1.0f, normalized));
+    
+    return (int)(normalized * SLIDER_RESOLUTION);
+}
+
+LRESULT CALLBACK ActivePluginsPanel::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    ActivePluginsPanel* panel = nullptr;
+    
+    if (uMsg == WM_CREATE) {
+        CREATESTRUCT* cs = reinterpret_cast<CREATESTRUCT*>(lParam);
+        panel = reinterpret_cast<ActivePluginsPanel*>(cs->lpCreateParams);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(panel));
+    } else {
+        panel = reinterpret_cast<ActivePluginsPanel*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    }
+    
+    if (panel) {
+        return panel->HandleMessage(uMsg, wParam, lParam);
     }
     
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
@@ -201,53 +396,44 @@ LRESULT ActivePluginsPanel::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lPara
         OnCommand(wParam, lParam);
         return 0;
         
+    case WM_HSCROLL:
+        OnHScroll(wParam, lParam);
+        return 0;
+        
+    case WM_VSCROLL:
+        OnVScroll(wParam, lParam);
+        return 0;
+        
+    case WM_TIMER:
+        OnTimer(wParam);
+        return 0;
+        
     default:
         return DefWindowProc(hwnd_, uMsg, wParam, lParam);
     }
 }
 
 void ActivePluginsPanel::OnCreate() {
-    // Nothing to initialize yet
+    // Nothing specific to initialize
 }
 
 void ActivePluginsPanel::OnPaint() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd_, &ps);
     
-    // Create back buffer for flicker-free drawing
     RECT rect;
     GetClientRect(hwnd_, &rect);
     
-    HDC hdcMem = CreateCompatibleDC(hdc);
-    HBITMAP hbmMem = CreateCompatibleBitmap(hdc, rect.right, rect.bottom);
-    HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hbmMem);
-    
     // Fill background
-    FillRect(hdcMem, &rect, (HBRUSH)(COLOR_WINDOW + 1));
+    FillRect(hdc, &rect, (HBRUSH)(COLOR_WINDOW + 1));
     
     if (plugins_.empty()) {
-        DrawEmptyState(hdcMem);
+        DrawEmptyState(hdc);
     } else {
-        // Draw connections between plugins
-        for (size_t i = 0; i < plugins_.size(); ++i) {
-            if (i > 0) {
-                DrawConnection(hdcMem, plugins_[i - 1], plugins_[i]);
-            }
-        }
-        
-        // Draw plugins
         for (const auto& plugin : plugins_) {
-            DrawPlugin(hdcMem, plugin);
+            DrawPlugin(hdc, plugin);
         }
     }
-    
-    // Copy back buffer to screen
-    BitBlt(hdc, 0, 0, rect.right, rect.bottom, hdcMem, 0, 0, SRCCOPY);
-    
-    // Cleanup
-    SelectObject(hdcMem, hbmOld);
-    DeleteObject(hbmMem);
-    DeleteDC(hdcMem);
     
     EndPaint(hwnd_, &ps);
 }
@@ -272,15 +458,8 @@ void ActivePluginsPanel::OnLButtonDown(int x, int y) {
 void ActivePluginsPanel::OnLButtonDblClk(int x, int y) {
     int index = HitTest(x, y);
     if (index >= 0) {
-        selectedNodeId_ = plugins_[index].nodeId;
-        
-        // Notify parent window to open plugin parameters
-        HWND parent = GetParent(hwnd_);
-        if (parent) {
-            // Send custom message with node ID
-            // Use WM_USER + 101 for "open plugin parameters"
-            SendMessage(parent, WM_USER + 101, selectedNodeId_, 0);
-        }
+        // Toggle expansion
+        TogglePluginExpanded(index);
     }
 }
 
@@ -290,7 +469,6 @@ void ActivePluginsPanel::OnRButtonDown(int x, int y) {
         selectedNodeId_ = plugins_[index].nodeId;
         InvalidateRect(hwnd_, nullptr, TRUE);
         
-        // Convert client coordinates to screen coordinates
         POINT pt = { x, y };
         ClientToScreen(hwnd_, &pt);
         ShowContextMenu(pt.x, pt.y);
@@ -309,121 +487,126 @@ void ActivePluginsPanel::OnCommand(WPARAM wParam, LPARAM lParam) {
     (void)lParam;
     int wmId = LOWORD(wParam);
     
-    if (selectedNodeId_ == 0) {
-        return;
-    }
-    
     switch (wmId) {
     case ID_MENU_REMOVE:
-        if (processingChain_) {
+        if (selectedNodeId_ != 0 && processingChain_) {
             processingChain_->RemovePlugin(selectedNodeId_);
             RemovePlugin(selectedNodeId_);
         }
         break;
         
     case ID_MENU_BYPASS:
-        // TODO: Implement bypass toggle
+        if (selectedNodeId_ != 0 && processingChain_) {
+            ProcessingNode* node = processingChain_->GetNode(selectedNodeId_);
+            if (node) {
+                node->SetBypassed(!node->IsBypassed());
+                InvalidateRect(hwnd_, nullptr, TRUE);
+            }
+        }
         break;
         
-    case ID_MENU_EDIT:
-        // TODO: Open plugin editor
+    default:
         break;
+    }
+}
+
+void ActivePluginsPanel::OnHScroll(WPARAM wParam, LPARAM lParam) {
+    HWND slider = reinterpret_cast<HWND>(lParam);
+    if (slider) {
+        OnSliderChange(slider);
+    }
+}
+
+void ActivePluginsPanel::OnVScroll(WPARAM wParam, LPARAM lParam) {
+    (void)lParam;
+    
+    int action = LOWORD(wParam);
+    
+    SCROLLINFO si = {};
+    si.cbSize = sizeof(SCROLLINFO);
+    si.fMask = SIF_ALL;
+    GetScrollInfo(hwnd_, SB_VERT, &si);
+    
+    int oldPos = scrollPos_;
+    
+    switch (action) {
+        case SB_LINEUP:
+            scrollPos_ = std::max(0, scrollPos_ - PARAM_HEIGHT);
+            break;
+        case SB_LINEDOWN:
+            scrollPos_ = std::min(maxScrollPos_, scrollPos_ + PARAM_HEIGHT);
+            break;
+        case SB_PAGEUP:
+            scrollPos_ = std::max(0, scrollPos_ - (int)si.nPage);
+            break;
+        case SB_PAGEDOWN:
+            scrollPos_ = std::min(maxScrollPos_, scrollPos_ + (int)si.nPage);
+            break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION:
+            scrollPos_ = HIWORD(wParam);
+            break;
+    }
+    
+    scrollPos_ = std::max(0, std::min(maxScrollPos_, scrollPos_));
+    
+    if (scrollPos_ != oldPos) {
+        si.fMask = SIF_POS;
+        si.nPos = scrollPos_;
+        SetScrollInfo(hwnd_, SB_VERT, &si, TRUE);
         
-    case ID_MENU_MOVE_UP:
-    case ID_MENU_MOVE_DOWN:
-        // TODO: Implement reordering
-        break;
+        // Update control positions
+        RecalculateLayout();
+        InvalidateRect(hwnd_, nullptr, TRUE);
+    }
+}
+
+void ActivePluginsPanel::OnTimer(WPARAM timerId) {
+    if (timerId == TIMER_ID_UPDATE) {
+        // Update all parameter displays
+        for (auto& plugin : plugins_) {
+            if (plugin.expanded) {
+                UpdateParameterControls(plugin);
+            }
+        }
     }
 }
 
 void ActivePluginsPanel::DrawPlugin(HDC hdc, const ActivePluginInfo& plugin) {
-    bool isSelected = (plugin.nodeId == selectedNodeId_);
+    int y = plugin.yPos - scrollPos_;
     
-    // Determine colors
-    COLORREF borderColor = isSelected ? RGB(0, 120, 215) : RGB(100, 100, 100);
-    COLORREF bgColor = plugin.bypassed ? RGB(220, 220, 220) : RGB(240, 240, 240);
-    COLORREF textColor = plugin.bypassed ? RGB(128, 128, 128) : RGB(0, 0, 0);
+    RECT rect;
+    GetClientRect(hwnd_, &rect);
+    
+    // Draw plugin header background
+    RECT headerRect = { MARGIN, y, rect.right - MARGIN, y + PLUGIN_HEADER_HEIGHT };
+    
+    COLORREF bgColor = (plugin.nodeId == selectedNodeId_) ? RGB(200, 220, 255) : RGB(240, 240, 240);
+    HBRUSH hBrush = CreateSolidBrush(bgColor);
+    FillRect(hdc, &headerRect, hBrush);
+    DeleteObject(hBrush);
     
     // Draw border
-    HPEN hPen = CreatePen(PS_SOLID, isSelected ? 2 : 1, borderColor);
-    HBRUSH hBrush = CreateSolidBrush(bgColor);
+    HPEN hPen = CreatePen(PS_SOLID, 1, RGB(150, 150, 150));
     HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
-    
-    Rectangle(hdc, plugin.xPos, plugin.yPos, 
-              plugin.xPos + plugin.width, plugin.yPos + plugin.height);
-    
+    Rectangle(hdc, headerRect.left, headerRect.top, headerRect.right, headerRect.bottom);
     SelectObject(hdc, hOldPen);
-    SelectObject(hdc, hOldBrush);
     DeleteObject(hPen);
-    DeleteObject(hBrush);
     
-    // Draw plugin name (truncate if too long)
-    std::string displayName = plugin.name;
-    if (displayName.length() > 15) {
-        displayName = displayName.substr(0, 12) + "...";
-    }
-    
-    RECT textRect = { 
-        plugin.xPos + 5, 
-        plugin.yPos + 5, 
-        plugin.xPos + plugin.width - 5, 
-        plugin.yPos + plugin.height - 5 
-    };
-    
-    SetTextColor(hdc, textColor);
+    // Draw plugin name
     SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(0, 0, 0));
     
-    std::wstring wName = utils::StringToWString(displayName);
-    DrawText(hdc, wName.c_str(), -1, &textRect, 
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    std::wstring nameText = utils::StringToWString(plugin.name);
+    RECT textRect = headerRect;
+    textRect.left += 10;
+    DrawText(hdc, nameText.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     
-    // Draw status indicator
-    if (!plugin.active) {
-        // Draw "inactive" indicator
-        RECT statusRect = { 
-            plugin.xPos + plugin.width - 15, 
-            plugin.yPos + 5, 
-            plugin.xPos + plugin.width - 5, 
-            plugin.yPos + 15 
-        };
-        HBRUSH redBrush = CreateSolidBrush(RGB(255, 0, 0));
-        FillRect(hdc, &statusRect, redBrush);
-        DeleteObject(redBrush);
-    }
-}
-
-void ActivePluginsPanel::DrawConnection(HDC hdc, const ActivePluginInfo& from, const ActivePluginInfo& to) {
-    // Draw line from right of 'from' to left of 'to'
-    int x1 = from.xPos + from.width;
-    int y1 = from.yPos + from.height / 2;
-    int x2 = to.xPos;
-    int y2 = to.yPos + to.height / 2;
-    
-    HPEN hPen = CreatePen(PS_SOLID, 2, RGB(100, 100, 100));
-    HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
-    
-    MoveToEx(hdc, x1, y1, nullptr);
-    LineTo(hdc, x2, y2);
-    
-    // Draw arrow head
-    int arrowSize = 8;
-    POINT arrow[3];
-    arrow[0].x = x2;
-    arrow[0].y = y2;
-    arrow[1].x = x2 - arrowSize;
-    arrow[1].y = y2 - arrowSize / 2;
-    arrow[2].x = x2 - arrowSize;
-    arrow[2].y = y2 + arrowSize / 2;
-    
-    HBRUSH hBrush = CreateSolidBrush(RGB(100, 100, 100));
-    HBRUSH hOldBrush = (HBRUSH)SelectObject(hdc, hBrush);
-    Polygon(hdc, arrow, 3);
-    
-    SelectObject(hdc, hOldPen);
-    SelectObject(hdc, hOldBrush);
-    DeleteObject(hPen);
-    DeleteObject(hBrush);
+    // Draw expand/collapse indicator
+    std::wstring indicator = plugin.expanded ? L"▼" : L"▶";
+    RECT indRect = headerRect;
+    indRect.right -= 10;
+    DrawText(hdc, indicator.c_str(), -1, &indRect, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 }
 
 void ActivePluginsPanel::DrawEmptyState(HDC hdc) {
@@ -432,76 +615,89 @@ void ActivePluginsPanel::DrawEmptyState(HDC hdc) {
     
     SetTextColor(hdc, RGB(150, 150, 150));
     SetBkMode(hdc, TRANSPARENT);
-    
-    // Select a larger font
-    HFONT hFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                            DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    HFONT hOldFont = (HFONT)SelectObject(hdc, hFont);
-    
-    DrawText(hdc, L"No plugins loaded", -1, &rect, 
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    
-    RECT rect2 = rect;
-    rect2.top += 30;
-    DrawText(hdc, L"Double-click a plugin in the browser to add it", -1, &rect2, 
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    
-    SelectObject(hdc, hOldFont);
-    DeleteObject(hFont);
+    DrawText(hdc, L"No plugins loaded\nDouble-click plugins in the browser to load", -1, &rect, 
+             DT_CENTER | DT_VCENTER);
 }
 
 int ActivePluginsPanel::HitTest(int x, int y) const {
+    (void)x;
+    
     for (size_t i = 0; i < plugins_.size(); ++i) {
-        const auto& plugin = plugins_[i];
-        if (x >= plugin.xPos && x <= plugin.xPos + plugin.width &&
-            y >= plugin.yPos && y <= plugin.yPos + plugin.height) {
-            return static_cast<int>(i);
+        int pluginY = plugins_[i].yPos - scrollPos_;
+        if (y >= pluginY && y < pluginY + PLUGIN_HEADER_HEIGHT) {
+            return (int)i;
         }
     }
+    
     return -1;
 }
 
 void ActivePluginsPanel::RecalculateLayout() {
-    if (plugins_.empty()) {
-        return;
-    }
+    RECT clientRect;
+    GetClientRect(hwnd_, &clientRect);
+    int clientHeight = clientRect.bottom - clientRect.top;
     
-    RECT rect;
-    GetClientRect(hwnd_, &rect);
-    
-    int availableWidth = rect.right - 2 * MARGIN;
-    int currentX = MARGIN;
     int currentY = MARGIN;
     
     for (auto& plugin : plugins_) {
-        plugin.xPos = currentX;
         plugin.yPos = currentY;
-        plugin.width = PLUGIN_WIDTH;
-        plugin.height = PLUGIN_HEIGHT;
         
-        currentX += PLUGIN_WIDTH + PLUGIN_SPACING;
-        
-        // Wrap to next line if needed
-        if (currentX + PLUGIN_WIDTH > availableWidth) {
-            currentX = MARGIN;
-            currentY += PLUGIN_HEIGHT + PLUGIN_SPACING;
+        // Update control positions
+        for (auto& control : plugin.parameters) {
+            int absoluteY = plugin.yPos + control.yOffset - scrollPos_;
+            
+            if (control.labelStatic) {
+                SetWindowPos(control.labelStatic, nullptr,
+                           MARGIN, absoluteY, 0, 0,
+                           SWP_NOSIZE | SWP_NOZORDER);
+            }
+            if (control.valueStatic) {
+                SetWindowPos(control.valueStatic, nullptr,
+                           MARGIN + LABEL_WIDTH + 10, absoluteY, 0, 0,
+                           SWP_NOSIZE | SWP_NOZORDER);
+            }
+            if (control.slider) {
+                SetWindowPos(control.slider, nullptr,
+                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY + 2, 0, 0,
+                           SWP_NOSIZE | SWP_NOZORDER);
+            }
         }
+        
+        currentY += plugin.height + PLUGIN_SPACING;
+    }
+    
+    int totalHeight = currentY;
+    
+    // Update scrollbar
+    if (totalHeight > clientHeight) {
+        maxScrollPos_ = totalHeight - clientHeight;
+        
+        SCROLLINFO si = {};
+        si.cbSize = sizeof(SCROLLINFO);
+        si.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+        si.nMin = 0;
+        si.nMax = totalHeight;
+        si.nPage = clientHeight;
+        si.nPos = scrollPos_;
+        SetScrollInfo(hwnd_, SB_VERT, &si, TRUE);
+        ShowScrollBar(hwnd_, SB_VERT, TRUE);
+    } else {
+        maxScrollPos_ = 0;
+        scrollPos_ = 0;
+        ShowScrollBar(hwnd_, SB_VERT, FALSE);
     }
 }
 
 void ActivePluginsPanel::ShowContextMenu(int x, int y) {
     HMENU hMenu = CreatePopupMenu();
     
-    AppendMenu(hMenu, MF_STRING, ID_MENU_EDIT, L"Edit Parameters...");
-    AppendMenu(hMenu, MF_STRING, ID_MENU_BYPASS, L"Bypass");
+    AppendMenu(hMenu, MF_STRING, ID_MENU_BYPASS, L"Toggle Bypass");
+    AppendMenu(hMenu, MF_STRING, ID_MENU_REMOVE, L"Remove Plugin");
     AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenu(hMenu, MF_STRING, ID_MENU_MOVE_UP, L"Move Up");
     AppendMenu(hMenu, MF_STRING, ID_MENU_MOVE_DOWN, L"Move Down");
-    AppendMenu(hMenu, MF_SEPARATOR, 0, nullptr);
-    AppendMenu(hMenu, MF_STRING, ID_MENU_REMOVE, L"Remove");
     
-    TrackPopupMenu(hMenu, TPM_RIGHTBUTTON, x, y, 0, hwnd_, nullptr);
+    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, x, y, 0, hwnd_, nullptr);
     DestroyMenu(hMenu);
 }
 
