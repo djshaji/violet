@@ -8,6 +8,7 @@
 #include "violet/theme_manager.h"
 #include "violet/session_manager.h"
 #include "violet/audio_settings_dialog.h"
+#include "violet/about_dialog.h"
 #include "violet/utils.h"
 #include "violet/resource.h"
 #include <commctrl.h>
@@ -390,6 +391,10 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
             }
         }
         break;
+    
+    case IDM_ABOUT:
+        OnAbout();
+        break;
         
     default:
         break;
@@ -730,6 +735,11 @@ void MainWindow::OnAudioSettings() {
             SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)L"Audio settings updated");
         }
     }
+}
+
+void MainWindow::OnAbout() {
+    AboutDialog aboutDialog;
+    aboutDialog.Show(hwnd_);
 }
 
 } // namespace violet

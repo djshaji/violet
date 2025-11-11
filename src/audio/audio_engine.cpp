@@ -1,3 +1,10 @@
+#include <windows.h>
+#include <initguid.h>
+#include <mmdeviceapi.h>
+#include <audioclient.h>
+#include <ks.h>
+#include <ksmedia.h>
+
 #include "violet/audio_engine.h"
 #include "violet/utils.h"
 #include <iostream>
@@ -33,17 +40,22 @@ AudioEngine::~AudioEngine() {
 }
 
 bool AudioEngine::Initialize() {
+    std::cout << "Initializing audio engine..." << std::endl;
+    
     if (!InitializeWASAPI()) {
+        std::cerr << "Failed to initialize WASAPI" << std::endl;
         return false;
     }
     
     // Create audio processing event
     audioEvent_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
     if (!audioEvent_) {
+        std::cerr << "Failed to create audio event: " << GetLastError() << std::endl;
         Shutdown();
         return false;
     }
     
+    std::cout << "Audio engine initialized successfully" << std::endl;
     return true;
 }
 
@@ -58,7 +70,14 @@ void AudioEngine::Shutdown() {
 }
 
 bool AudioEngine::InitializeWASAPI() {
-    HRESULT hr = CoCreateInstance(
+    // Initialize COM for this thread if not already initialized
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+        std::cerr << "Failed to initialize COM: 0x" << std::hex << hr << std::endl;
+        // Continue anyway as COM might already be initialized
+    }
+    
+    hr = CoCreateInstance(
         __uuidof(MMDeviceEnumerator),
         nullptr, CLSCTX_ALL,
         __uuidof(IMMDeviceEnumerator),
@@ -66,10 +85,20 @@ bool AudioEngine::InitializeWASAPI() {
     );
     
     if (FAILED(hr)) {
-        std::cerr << "Failed to create device enumerator: " << std::hex << hr << std::endl;
+        std::cerr << "Failed to create device enumerator: 0x" << std::hex << hr << std::endl;
+        if (hr == REGDB_E_CLASSNOTREG) {
+            std::cerr << "MMDeviceEnumerator class not registered (Wine may need winepulse)" << std::endl;
+        } else if (hr == CLASS_E_NOAGGREGATION) {
+            std::cerr << "Class cannot be aggregated" << std::endl;
+        } else if (hr == E_NOINTERFACE) {
+            std::cerr << "Interface not supported" << std::endl;
+        } else if (hr == CO_E_NOTINITIALIZED) {
+            std::cerr << "COM not initialized" << std::endl;
+        }
         return false;
     }
     
+    std::cout << "WASAPI device enumerator created successfully" << std::endl;
     return true;
 }
 
@@ -237,6 +266,7 @@ bool AudioEngine::SetOutputDevice(const std::string& deviceId) {
 
 bool AudioEngine::SelectDevice(const std::string& deviceId, bool isInput) {
     if (!deviceEnumerator_) {
+        std::cerr << "Device enumerator not initialized" << std::endl;
         return false;
     }
     
@@ -257,17 +287,34 @@ bool AudioEngine::SelectDevice(const std::string& deviceId, bool isInput) {
         EDataFlow flow = isInput ? eCapture : eRender;
         HRESULT hr = deviceEnumerator_->GetDefaultAudioEndpoint(flow, eConsole, targetDevice);
         if (FAILED(hr)) {
+            std::cerr << "Failed to get default " << (isInput ? "input" : "output") 
+                      << " device: 0x" << std::hex << hr << std::endl;
+            if (hr == E_NOTFOUND) {
+                std::cerr << "No " << (isInput ? "input" : "output") << " devices found" << std::endl;
+            } else if (hr == E_OUTOFMEMORY) {
+                std::cerr << "Out of memory" << std::endl;
+            }
             return false;
         }
         *targetDeviceId = GetDeviceId(*targetDevice);
+        std::cout << "Selected default " << (isInput ? "input" : "output") 
+                  << " device: " << *targetDeviceId << std::endl;
     } else {
         // Use specific device
         std::wstring wDeviceId = utils::StringToWString(deviceId);
         HRESULT hr = deviceEnumerator_->GetDevice(wDeviceId.c_str(), targetDevice);
         if (FAILED(hr)) {
+            std::cerr << "Failed to get device '" << deviceId << "': 0x" << std::hex << hr << std::endl;
+            if (hr == E_NOTFOUND) {
+                std::cerr << "Device not found" << std::endl;
+            } else if (hr == E_INVALIDARG) {
+                std::cerr << "Invalid device ID" << std::endl;
+            }
             return false;
         }
         *targetDeviceId = deviceId;
+        std::cout << "Selected " << (isInput ? "input" : "output") 
+                  << " device: " << deviceId << std::endl;
     }
     
     return true;
@@ -329,13 +376,25 @@ bool AudioEngine::Start() {
     
     // Ensure we have devices selected
     if (currentOutputDeviceId_.empty()) {
-        SetOutputDevice(""); // Use default
+        std::cout << "Selecting default output device..." << std::endl;
+        if (!SetOutputDevice("")) { // Use default
+            std::cerr << "Failed to select default output device" << std::endl;
+            return false;
+        }
     }
     
     // Create audio clients
+    std::cout << "Creating audio client for output device: " << currentOutputDeviceId_ << std::endl;
     if (!CreateAudioClient(false)) { // Output
+        std::cerr << "Failed to create audio client. Cannot start audio engine." << std::endl;
         return false;
     }
+    
+    std::cout << "Audio engine starting with:" << std::endl;
+    std::cout << "  Sample rate: " << currentFormat_.sampleRate << " Hz" << std::endl;
+    std::cout << "  Channels: " << currentFormat_.channels << std::endl;
+    std::cout << "  Bit depth: " << currentFormat_.bitsPerSample << " bits" << std::endl;
+    std::cout << "  Buffer size: " << currentFormat_.bufferSize << " samples" << std::endl;
     
     // Start audio thread
     shouldStop_.store(false);
@@ -375,6 +434,7 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
     IAudioClient** client = isInput ? &inputClient_ : &outputClient_;
     
     if (!device) {
+        std::cerr << "No " << (isInput ? "input" : "output") << " device selected" << std::endl;
         return false;
     }
     
@@ -387,6 +447,8 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
     // Create new audio client
     HRESULT hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client);
     if (FAILED(hr)) {
+        std::cerr << "Failed to activate audio client for " << (isInput ? "input" : "output") 
+                  << ": 0x" << std::hex << hr << std::endl;
         return false;
     }
     
@@ -401,6 +463,7 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
     if (!isInput) {
         hr = (*client)->GetService(__uuidof(IAudioRenderClient), (void**)&renderClient_);
         if (FAILED(hr)) {
+            std::cerr << "Failed to get render client: 0x" << std::hex << hr << std::endl;
             return false;
         }
         
@@ -410,6 +473,7 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
     } else {
         hr = (*client)->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient_);
         if (FAILED(hr)) {
+            std::cerr << "Failed to get capture client: 0x" << std::hex << hr << std::endl;
             return false;
         }
     }
@@ -420,6 +484,7 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
 bool AudioEngine::SetupFormat(IAudioClient* client, const AudioFormat& format) {
     WAVEFORMATEX* waveFormat = CreateWaveFormat(format);
     if (!waveFormat) {
+        std::cerr << "Failed to create wave format" << std::endl;
         return false;
     }
     
@@ -438,12 +503,21 @@ bool AudioEngine::SetupFormat(IAudioClient* client, const AudioFormat& format) {
     CoTaskMemFree(waveFormat);
     
     if (FAILED(hr)) {
+        std::cerr << "Failed to initialize audio client: 0x" << std::hex << hr << std::endl;
+        if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
+            std::cerr << "Format not supported by device" << std::endl;
+        } else if (hr == AUDCLNT_E_DEVICE_IN_USE) {
+            std::cerr << "Device is already in use" << std::endl;
+        } else if (hr == E_INVALIDARG) {
+            std::cerr << "Invalid argument in Initialize" << std::endl;
+        }
         return false;
     }
     
     // Set event handle
     hr = client->SetEventHandle(audioEvent_);
     if (FAILED(hr)) {
+        std::cerr << "Failed to set event handle: 0x" << std::hex << hr << std::endl;
         return false;
     }
     
@@ -451,26 +525,50 @@ bool AudioEngine::SetupFormat(IAudioClient* client, const AudioFormat& format) {
 }
 
 WAVEFORMATEX* AudioEngine::CreateWaveFormat(const AudioFormat& format) {
-    WAVEFORMATEX* waveFormat = (WAVEFORMATEX*)CoTaskMemAlloc(sizeof(WAVEFORMATEX));
-    if (!waveFormat) {
+    // Use WAVEFORMATEXTENSIBLE for proper float format support
+    WAVEFORMATEXTENSIBLE* waveFormatEx = (WAVEFORMATEXTENSIBLE*)CoTaskMemAlloc(sizeof(WAVEFORMATEXTENSIBLE));
+    if (!waveFormatEx) {
         return nullptr;
     }
     
-    waveFormat->wFormatTag = WAVE_FORMAT_PCM;
-    waveFormat->nChannels = format.channels;
-    waveFormat->nSamplesPerSec = format.sampleRate;
-    waveFormat->wBitsPerSample = format.bitsPerSample;
-    waveFormat->nBlockAlign = (format.channels * format.bitsPerSample) / 8;
-    waveFormat->nAvgBytesPerSec = format.sampleRate * waveFormat->nBlockAlign;
-    waveFormat->cbSize = 0;
+    memset(waveFormatEx, 0, sizeof(WAVEFORMATEXTENSIBLE));
     
-    return waveFormat;
+    waveFormatEx->Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+    waveFormatEx->Format.nChannels = format.channels;
+    waveFormatEx->Format.nSamplesPerSec = format.sampleRate;
+    waveFormatEx->Format.wBitsPerSample = format.bitsPerSample;
+    waveFormatEx->Format.nBlockAlign = (format.channels * format.bitsPerSample) / 8;
+    waveFormatEx->Format.nAvgBytesPerSec = format.sampleRate * waveFormatEx->Format.nBlockAlign;
+    waveFormatEx->Format.cbSize = 22; // Size of the extension
+    
+    waveFormatEx->Samples.wValidBitsPerSample = format.bitsPerSample;
+    
+    // Set channel mask for stereo (front left + front right)
+    waveFormatEx->dwChannelMask = (format.channels == 2) ? (SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT) : 0;
+    
+    // Use IEEE float format for 32-bit, PCM for others
+    if (format.bitsPerSample == 32) {
+        waveFormatEx->SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+    } else {
+        waveFormatEx->SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+    }
+    
+    return (WAVEFORMATEX*)waveFormatEx;
 }
 
 void AudioEngine::AudioThreadProc() {
+    // Initialize COM for this thread (required for WASAPI)
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    bool comInitialized = SUCCEEDED(hr);
+    
     // Start the audio client
     if (outputClient_) {
-        outputClient_->Start();
+        hr = outputClient_->Start();
+        if (FAILED(hr)) {
+            std::cerr << "Failed to start output client: 0x" << std::hex << hr << std::endl;
+            if (comInitialized) CoUninitialize();
+            return;
+        }
     }
     
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -541,6 +639,11 @@ void AudioEngine::AudioThreadProc() {
     // Stop the audio client
     if (outputClient_) {
         outputClient_->Stop();
+    }
+    
+    // Uninitialize COM for this thread
+    if (comInitialized) {
+        CoUninitialize();
     }
 }
 

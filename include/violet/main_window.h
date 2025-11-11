@@ -16,6 +16,7 @@ class AudioEngine;
 class AudioProcessingChain;
 class SessionManager;
 class AudioSettingsDialog;
+class AboutDialog;
 
 class MainWindow {
 public:
@@ -69,6 +70,9 @@ private:
     
     // Audio settings
     void OnAudioSettings();
+    
+    // About dialog
+    void OnAbout();
     
     // Member variables
     HWND hwnd_;

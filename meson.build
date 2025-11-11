@@ -31,6 +31,7 @@ if host_machine.system() == 'windows'
   windows_deps += cpp.find_library('oleaut32', required : true)
   windows_deps += cpp.find_library('dwmapi', required : true)
   windows_deps += cpp.find_library('advapi32', required : true)
+  windows_deps += cpp.find_library('ksuser', required : false)  # For audio format GUIDs
 endif
 
 # LV2/LILV dependencies from win32 folder
@@ -75,6 +76,7 @@ violet_sources = [
   'src/ui/active_plugins_panel.cpp',
   'src/ui/plugin_parameters_window.cpp',
   'src/ui/audio_settings_dialog.cpp',
+  'src/ui/about_dialog.cpp',
   'src/core/config_manager.cpp',
   'src/core/theme_manager.cpp',
   'src/core/session_manager.cpp',

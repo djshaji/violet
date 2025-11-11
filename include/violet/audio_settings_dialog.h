@@ -22,8 +22,8 @@ public:
     
 private:
     // Dialog procedure
-    static INT_PTR CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-    INT_PTR HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK StaticDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     
     // Message handlers
     void OnInitDialog(HWND hwnd);

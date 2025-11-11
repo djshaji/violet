@@ -31,10 +31,10 @@ bool AudioSettingsDialog::Show(HWND parentWindow, AudioEngine* audioEngine) {
         return false;
     }
     
-    // Create dialog manually using CreateWindowEx for more control
+    // Register window class for dialog
     WNDCLASSEX wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
-    wc.lpfnWndProc = DefDlgProc;
+    wc.lpfnWndProc = StaticDialogProc;
     wc.hInstance = GetModuleHandle(nullptr);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
@@ -42,7 +42,10 @@ bool AudioSettingsDialog::Show(HWND parentWindow, AudioEngine* audioEngine) {
     
     static bool classRegistered = false;
     if (!classRegistered) {
-        RegisterClassEx(&wc);
+        if (!RegisterClassEx(&wc)) {
+            MessageBox(parentWindow, L"Failed to register dialog class", L"Error", MB_OK | MB_ICONERROR);
+            return false;
+        }
         classRegistered = true;
     }
     
@@ -51,21 +54,22 @@ bool AudioSettingsDialog::Show(HWND parentWindow, AudioEngine* audioEngine) {
         WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE,
         L"AudioSettingsDialog",
         L"Audio Settings",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_VISIBLE | DS_MODALFRAME,
+        WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME,
         CW_USEDEFAULT, CW_USEDEFAULT,
         500, 400,
         parentWindow,
         nullptr,
         GetModuleHandle(nullptr),
-        nullptr
+        this  // Pass this pointer via CreateParams
     );
     
     if (!hwnd_) {
+        DWORD error = GetLastError();
+        wchar_t buf[256];
+        wsprintf(buf, L"Failed to create dialog window. Error: %d", error);
+        MessageBox(parentWindow, buf, L"Error", MB_OK | MB_ICONERROR);
         return false;
     }
-    
-    // Store this pointer in window data
-    SetWindowLongPtr(hwnd_, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
     
     // Create controls
     OnInitDialog(hwnd_);
@@ -78,27 +82,22 @@ bool AudioSettingsDialog::Show(HWND parentWindow, AudioEngine* audioEngine) {
     int y = rcParent.top + (rcParent.bottom - rcParent.top - (rcDialog.bottom - rcDialog.top)) / 2;
     SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
     
+    // Show the window
+    ShowWindow(hwnd_, SW_SHOW);
+    UpdateWindow(hwnd_);
+    
     // Run modal message loop
     MSG msg;
     EnableWindow(parentWindow, FALSE);
     
     while (GetMessage(&msg, nullptr, 0, 0)) {
-        if (msg.hwnd == hwnd_ || IsChild(hwnd_, msg.hwnd)) {
-            if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) {
-                OnCancel();
-                break;
-            }
-            if (!IsDialogMessage(hwnd_, &msg)) {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-            }
-        } else {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-        
         if (!IsWindow(hwnd_)) {
             break;
+        }
+        
+        if (!IsDialogMessage(hwnd_, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
         }
     }
     
@@ -190,9 +189,6 @@ void AudioSettingsDialog::OnInitDialog(HWND hwnd) {
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
         labelWidth + 20 + controlWidth - 90, yPos, 80, 30,
         hwnd_, (HMENU)IDC_CANCEL_BUTTON, GetModuleHandle(nullptr), nullptr);
-    
-    // Set dialog subclass to handle messages
-    SetWindowLongPtr(hwnd_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(DialogProc));
     
     // Populate controls
     PopulateDeviceLists();
@@ -327,28 +323,37 @@ void AudioSettingsDialog::SelectDeviceInList(HWND listbox, const std::string& de
     }
 }
 
-INT_PTR CALLBACK AudioSettingsDialog::DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    AudioSettingsDialog* pThis = reinterpret_cast<AudioSettingsDialog*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+LRESULT CALLBACK AudioSettingsDialog::StaticDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    AudioSettingsDialog* pThis = nullptr;
+    
+    if (msg == WM_NCCREATE) {
+        // Get the this pointer from CreateParams
+        CREATESTRUCT* pCreate = reinterpret_cast<CREATESTRUCT*>(lParam);
+        pThis = reinterpret_cast<AudioSettingsDialog*>(pCreate->lpCreateParams);
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pThis));
+    } else {
+        pThis = reinterpret_cast<AudioSettingsDialog*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+    }
     
     if (pThis) {
-        return pThis->HandleMessage(msg, wParam, lParam);
+        return pThis->HandleMessage(hwnd, msg, wParam, lParam);
     }
     
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-INT_PTR AudioSettingsDialog::HandleMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT AudioSettingsDialog::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_COMMAND:
         OnCommand(wParam);
-        return TRUE;
+        return 0;
         
     case WM_CLOSE:
         OnCancel();
-        return TRUE;
+        return 0;
         
     default:
-        return DefWindowProc(hwnd_, msg, wParam, lParam);
+        return DefWindowProc(hwnd, msg, wParam, lParam);
     }
 }
 
