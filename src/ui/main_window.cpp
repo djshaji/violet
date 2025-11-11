@@ -5,6 +5,7 @@
 #include "violet/plugin_manager.h"
 #include "violet/audio_engine.h"
 #include "violet/audio_processing_chain.h"
+#include "violet/theme_manager.h"
 #include "violet/utils.h"
 #include "violet/resource.h"
 #include <commctrl.h>
@@ -153,6 +154,15 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
         ShowPluginParameters(nodeId);
         return 0;
     }
+    
+    case WM_USER + 200: {
+        // Custom message: drag-drop plugin URI from browser
+        if (lParam != 0 && activePluginsPanel_) {
+            const char* uri = reinterpret_cast<const char*>(lParam);
+            activePluginsPanel_->LoadPluginFromUri(uri);
+        }
+        return 0;
+    }
         
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
@@ -177,6 +187,9 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 void MainWindow::OnCreate() {
+    // Load theme preferences
+    ThemeManager::GetInstance().LoadFromConfig();
+    
     // Initialize backend components
     pluginManager_ = std::make_unique<PluginManager>();
     if (pluginManager_) {
@@ -200,6 +213,9 @@ void MainWindow::OnCreate() {
     CreateStatusBar();
     CreateControls();
     UpdateLayout();
+    
+    // Apply theme to main window
+    ThemeManager::GetInstance().ApplyToWindow(hwnd_);
     
     // Update status bar with initial state
     if (hStatusBar_) {
@@ -244,6 +260,18 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
     switch (wmId) {
     case IDM_EXIT:
         DestroyWindow(hwnd_);
+        break;
+    
+    case IDM_VIEW_THEME_LIGHT:
+        ThemeManager::GetInstance().SetTheme(ThemeType::Light);
+        break;
+    
+    case IDM_VIEW_THEME_DARK:
+        ThemeManager::GetInstance().SetTheme(ThemeType::Dark);
+        break;
+    
+    case IDM_VIEW_THEME_SYSTEM:
+        ThemeManager::GetInstance().SetTheme(ThemeType::System);
         break;
         
     default:
@@ -298,11 +326,19 @@ void MainWindow::CreateMenuBar() {
     AppendMenu(hAudioMenu, MF_STRING, IDM_AUDIO_START, L"&Start Audio Engine");
     AppendMenu(hAudioMenu, MF_STRING, IDM_AUDIO_STOP, L"St&op Audio Engine");
     
+    HMENU hViewMenu = CreatePopupMenu();
+    HMENU hThemeMenu = CreatePopupMenu();
+    AppendMenu(hThemeMenu, MF_STRING, IDM_VIEW_THEME_LIGHT, L"&Light");
+    AppendMenu(hThemeMenu, MF_STRING, IDM_VIEW_THEME_DARK, L"&Dark");
+    AppendMenu(hThemeMenu, MF_STRING, IDM_VIEW_THEME_SYSTEM, L"&System Default");
+    AppendMenu(hViewMenu, MF_POPUP, (UINT_PTR)hThemeMenu, L"&Theme");
+    
     HMENU hHelpMenu = CreatePopupMenu();
     AppendMenu(hHelpMenu, MF_STRING, IDM_ABOUT, L"&About Violet");
     
     AppendMenu(hMenuBar, MF_POPUP, (UINT_PTR)hFileMenu, L"&File");
     AppendMenu(hMenuBar, MF_POPUP, (UINT_PTR)hAudioMenu, L"&Audio");
+    AppendMenu(hMenuBar, MF_POPUP, (UINT_PTR)hViewMenu, L"&View");
     AppendMenu(hMenuBar, MF_POPUP, (UINT_PTR)hHelpMenu, L"&Help");
     
     SetMenu(hwnd_, hMenuBar);

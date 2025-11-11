@@ -1,10 +1,10 @@
 
 # Violet LV2 Plugin Host - Detailed Project Outline
 
-## Project Status Summary (Updated: November 7, 2025)
+## Project Status Summary (Updated: November 11, 2025)
 
 **Current Phase**: Phase 4 (User Interface Implementation) - In Progress  
-**Overall Completion**: ~75%
+**Overall Completion**: ~82%
 
 ### Completed Components ✅
 - ✅ **Core Infrastructure**: Meson build system, cross-compilation setup, basic application structure
@@ -17,15 +17,16 @@
 - ✅ **Basic Window**: Main window with menu bar, status bar, toolbar skeleton
 - ✅ **Plugin Browser**: Tree view with search, category grouping, plugin selection
 - ✅ **Active Plugins Panel**: Vertical list with inline parameter controls (sliders), real-time updates, bypass/remove buttons
-- ✅ **Plugin Parameters Window**: Floating window with sliders for real-time parameter control (November 7, 2025)
+- ✅ **Plugin Parameters Window**: Floating window with sliders for real-time parameter control
+- ✅ **Plugin Control Buttons**: Bypass toggle, remove, and remove all buttons in active panel
+- ✅ **Drag-and-Drop**: Drag plugins from browser to active panel to load them
+- ✅ **Theme System**: Light/Dark/System theme support with modern styling
 
 ### In Progress 🔄
-- 🔄 **User Interface**: Core components complete, needs drag-and-drop and theme system
 - 🔄 **Session Management**: Infrastructure in place, needs full implementation
 
 ### Not Started ❌
 - ❌ **Individual Plugin Windows**: Separate windows for detailed plugin control
-- ❌ **Theme System**: Dark/light theme support
 - ❌ **Audio File I/O**: File playback and recording
 - ❌ **Testing Framework**: Unit and integration tests
 - ❌ **Installation Package**: Distribution and installer
@@ -36,9 +37,10 @@
 3. ✅ ~~Add parameter controls (sliders, knobs) for plugins~~ **COMPLETED**
 4. ✅ ~~Implement plugin loading from browser (double-click)~~ **COMPLETED**
 5. ✅ ~~Open plugin parameters window on double-click from active panel~~ **COMPLETED**
-6. Implement drag-and-drop from browser to active panel
-7. Implement theme system for modern UI appearance
-8. Complete session save/load functionality
+6. ✅ ~~Add bypass/remove/remove-all buttons to active plugins panel~~ **COMPLETED**
+7. ✅ ~~Implement drag-and-drop from browser to active panel~~ **COMPLETED**
+8. ✅ ~~Implement theme system for modern UI appearance~~ **COMPLETED**
+9. Complete session save/load functionality
 
 ---
 
@@ -189,7 +191,7 @@ violet/
    - ✅ Tree view of available LV2 plugins
    - ✅ Search functionality
    - ✅ Plugin categories and filtering
-   - ❌ Drag-and-drop support to active plugins area (ready for implementation)
+   - ✅ Drag-and-drop support to active plugins area
 
 3. **Active Plugins Panel** ✅ COMPLETED
    - ✅ Display loaded plugins in vertical list with headers
@@ -210,10 +212,12 @@ violet/
    - ❌ Plugin-specific UI elements
    - ❌ Window management (minimize, close, bring to front)
 
-5. **Theme System** ❌ NOT STARTED
-   - ❌ Light and dark theme implementation
-   - ❌ Modern Windows styling
-   - ❌ Theme switching capability
+5. **Theme System** ✅ COMPLETED
+   - ✅ Light and dark theme implementation
+   - ✅ Modern Windows styling
+   - ✅ Theme switching capability
+   - ✅ System theme detection (Windows 10/11)
+   - ✅ Preference persistence in config
 
 **Deliverables**: ✅ COMPLETED
 - ✅ Complete window with menu and status bar

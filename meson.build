@@ -29,6 +29,8 @@ if host_machine.system() == 'windows'
   windows_deps += cpp.find_library('dsound', required : true)
   windows_deps += cpp.find_library('ole32', required : true)
   windows_deps += cpp.find_library('oleaut32', required : true)
+  windows_deps += cpp.find_library('dwmapi', required : true)
+  windows_deps += cpp.find_library('advapi32', required : true)
 endif
 
 # LV2/LILV dependencies from win32 folder
@@ -73,6 +75,7 @@ violet_sources = [
   'src/ui/active_plugins_panel.cpp',
   'src/ui/plugin_parameters_window.cpp',
   'src/core/config_manager.cpp',
+  'src/core/theme_manager.cpp',
   'src/core/utils.cpp',
   'src/platform/windows_api.cpp',
   'src/audio/audio_engine.cpp',

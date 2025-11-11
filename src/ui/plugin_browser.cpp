@@ -195,6 +195,13 @@ void PluginBrowser::OnSize(int width, int height) {
 
 void PluginBrowser::OnNotify(NMHDR* pnmhdr) {
     if (pnmhdr->idFrom == ID_TREEVIEW) {
+        if (pnmhdr->code == TVN_BEGINDRAG) {
+            // Begin drag operation
+            NMTREEVIEW* pnmtv = reinterpret_cast<NMTREEVIEW*>(pnmhdr);
+            OnBeginDrag(pnmtv);
+            return;
+        }
+        
         if (pnmhdr->code == NM_DBLCLK) {
             // Double-click on tree item - notify parent window
             std::string selectedUri = GetSelectedPluginUri();
@@ -433,6 +440,44 @@ std::string PluginBrowser::GetItemText(HTREEITEM hItem) const {
     }
     
     return "";
+}
+
+std::string PluginBrowser::GetPluginUriAtItem(HTREEITEM hItem) const {
+    if (!hTreeView_ || !hItem) {
+        return "";
+    }
+    
+    TVITEM item = {};
+    item.hItem = hItem;
+    item.mask = TVIF_PARAM;
+    
+    if (TreeView_GetItem(hTreeView_, &item) && item.lParam) {
+        TreeItemData* data = reinterpret_cast<TreeItemData*>(item.lParam);
+        if (!data->isCategory) {
+            return data->uri;
+        }
+    }
+    
+    return "";
+}
+
+void PluginBrowser::OnBeginDrag(NMTREEVIEW* pnmtv) {
+    // Get the plugin URI being dragged
+    std::string uri = GetPluginUriAtItem(pnmtv->itemNew.hItem);
+    if (uri.empty()) {
+        return;  // Can't drag categories
+    }
+    
+    // Create a custom message to send to parent with the URI
+    // We'll use a custom message (WM_USER + 200) to notify the main window
+    HWND parent = GetParent(hwnd_);
+    if (parent) {
+        // Send plugin URI via custom message
+        // We'll store the URI in a static variable and send a pointer
+        static std::string draggedUri;
+        draggedUri = uri;
+        SendMessage(parent, WM_USER + 200, 0, reinterpret_cast<LPARAM>(draggedUri.c_str()));
+    }
 }
 
 } // namespace violet

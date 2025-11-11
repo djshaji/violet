@@ -172,6 +172,23 @@ void ActivePluginsPanel::Refresh() {
     }
 }
 
+void ActivePluginsPanel::LoadPluginFromUri(const std::string& uri) {
+    if (!processingChain_ || uri.empty()) {
+        return;
+    }
+    
+    // Load the plugin via the processing chain
+    uint32_t nodeId = processingChain_->AddPlugin(uri);
+    if (nodeId != 0) {
+        // Get plugin info from the node
+        auto node = processingChain_->GetNode(nodeId);
+        if (node && node->GetPlugin()) {
+            std::string name = node->GetPlugin()->GetInfo().name;
+            AddPlugin(nodeId, name, uri);
+        }
+    }
+}
+
 void ActivePluginsPanel::Resize(int x, int y, int width, int height) {
     if (hwnd_) {
         SetWindowPos(hwnd_, nullptr, x, y, width, height, SWP_NOZORDER);

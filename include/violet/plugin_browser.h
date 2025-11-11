@@ -38,6 +38,9 @@ public:
     
     // Resize the browser
     void Resize(int x, int y, int width, int height);
+    
+    // Get plugin URI at specific tree item
+    std::string GetPluginUriAtItem(HTREEITEM hItem) const;
 
 private:
     // Window procedure
@@ -48,6 +51,7 @@ private:
     void OnCreate();
     void OnSize(int width, int height);
     void OnNotify(NMHDR* pnmhdr);
+    void OnBeginDrag(NMTREEVIEW* pnmtv);
     
     // UI creation
     void CreateControls();

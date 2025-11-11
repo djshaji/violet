@@ -71,6 +71,9 @@ public:
     
     // Get selected plugin node ID (0 if none)
     uint32_t GetSelectedPlugin() const { return selectedNodeId_; }
+    
+    // Load plugin from drag-drop
+    void LoadPluginFromUri(const std::string& uri);
 
 private:
     // Window procedure
@@ -89,6 +92,7 @@ private:
     void OnHScroll(WPARAM wParam, LPARAM lParam);
     void OnVScroll(WPARAM wParam, LPARAM lParam);
     void OnTimer(WPARAM timerId);
+    void OnDropFiles(HDROP hDrop);
     
     // Drawing functions
     void DrawPlugin(HDC hdc, const ActivePluginInfo& plugin);
