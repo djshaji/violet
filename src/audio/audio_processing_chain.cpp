@@ -50,12 +50,18 @@ void ProcessingNode::AllocateBuffers() {
     
     const auto& info = plugin_->GetInfo();
     
+    std::cout << "Allocating buffers for plugin: inputs=" << info.audioInputs 
+              << ", outputs=" << info.audioOutputs << ", blockSize=" << blockSize_ << std::endl;
+    
     // Allocate input buffers
     inputBuffers_.resize(info.audioInputs);
     inputPtrs_.resize(info.audioInputs);
     for (uint32_t i = 0; i < info.audioInputs; ++i) {
         inputBuffers_[i].resize(blockSize_, 0.0f);
         inputPtrs_[i] = inputBuffers_[i].data();
+        if (!inputPtrs_[i]) {
+            std::cerr << "Error: Failed to allocate input buffer " << i << std::endl;
+        }
     }
     
     // Allocate output buffers
@@ -64,6 +70,9 @@ void ProcessingNode::AllocateBuffers() {
     for (uint32_t i = 0; i < info.audioOutputs; ++i) {
         outputBuffers_[i].resize(blockSize_, 0.0f);
         outputPtrs_[i] = outputBuffers_[i].data();
+        if (!outputPtrs_[i]) {
+            std::cerr << "Error: Failed to allocate output buffer " << i << std::endl;
+        }
     }
 }
 
@@ -113,9 +122,11 @@ void ProcessingNode::Process(float** inputBuffers, float** outputBuffers, uint32
         // Bypass: copy input to output
         for (uint32_t ch = 0; ch < std::min(inputChannels_.size(), outputChannels_.size()); ++ch) {
             if (inputChannels_[ch] < channels_ && outputChannels_[ch] < channels_) {
-                memcpy(outputBuffers[outputChannels_[ch]], 
-                       inputBuffers[inputChannels_[ch]], 
-                       frames * sizeof(float));
+                if (inputBuffers && outputBuffers && inputBuffers[inputChannels_[ch]] && outputBuffers[outputChannels_[ch]]) {
+                    memcpy(outputBuffers[outputChannels_[ch]], 
+                           inputBuffers[inputChannels_[ch]], 
+                           frames * sizeof(float));
+                }
             }
         }
         return;
@@ -123,32 +134,50 @@ void ProcessingNode::Process(float** inputBuffers, float** outputBuffers, uint32
     
     const auto& info = plugin_->GetInfo();
     
-    // Copy input data to plugin input buffers
-    for (uint32_t i = 0; i < info.audioInputs && i < inputChannels_.size(); ++i) {
-        uint32_t srcChannel = inputChannels_[i];
-        if (srcChannel < channels_) {
-            memcpy(inputPtrs_[i], inputBuffers[srcChannel], frames * sizeof(float));
-        } else {
-            // No input available, clear buffer
-            memset(inputPtrs_[i], 0, frames * sizeof(float));
+    // Process in chunks if frames exceeds blockSize
+    uint32_t framesProcessed = 0;
+    while (framesProcessed < frames) {
+        uint32_t framesToProcess = std::min(frames - framesProcessed, blockSize_);
+        
+        // Copy input data to plugin input buffers with validation
+        for (uint32_t i = 0; i < info.audioInputs && i < inputChannels_.size() && i < inputPtrs_.size(); ++i) {
+            if (!inputPtrs_[i]) {
+                std::cerr << "Error: inputPtrs_[" << i << "] is NULL!" << std::endl;
+                continue;
+            }
+            
+            uint32_t srcChannel = inputChannels_[i];
+            if (srcChannel < channels_ && inputBuffers && inputBuffers[srcChannel]) {
+                memcpy(inputPtrs_[i], inputBuffers[srcChannel] + framesProcessed, framesToProcess * sizeof(float));
+            } else {
+                // No input available, clear buffer
+                memset(inputPtrs_[i], 0, framesToProcess * sizeof(float));
+            }
         }
-    }
-    
-    // Process parameter changes
-    ProcessParameterChanges();
-    
-    // Process automation
-    ProcessAutomation(0, frames); // TODO: Pass correct sample time
-    
-    // Run the plugin
-    plugin_->Process(frames);
-    
-    // Copy output data from plugin output buffers
-    for (uint32_t i = 0; i < info.audioOutputs && i < outputChannels_.size(); ++i) {
-        uint32_t dstChannel = outputChannels_[i];
-        if (dstChannel < channels_) {
-            memcpy(outputBuffers[dstChannel], outputPtrs_[i], frames * sizeof(float));
+        
+        // Process parameter changes
+        ProcessParameterChanges();
+        
+        // Process automation
+        ProcessAutomation(framesProcessed, framesToProcess);
+        
+        // Run the plugin
+        plugin_->Process(framesToProcess);
+        
+        // Copy output data from plugin output buffers with validation
+        for (uint32_t i = 0; i < info.audioOutputs && i < outputChannels_.size() && i < outputPtrs_.size(); ++i) {
+            if (!outputPtrs_[i]) {
+                std::cerr << "Error: outputPtrs_[" << i << "] is NULL!" << std::endl;
+                continue;
+            }
+            
+            uint32_t dstChannel = outputChannels_[i];
+            if (dstChannel < channels_ && outputBuffers && outputBuffers[dstChannel]) {
+                memcpy(outputBuffers[dstChannel] + framesProcessed, outputPtrs_[i], framesToProcess * sizeof(float));
+            }
         }
+        
+        framesProcessed += framesToProcess;
     }
 }
 

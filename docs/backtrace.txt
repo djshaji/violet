@@ -1,38 +1,38 @@
 Unhandled exception: page fault on read access to 0x0000000000000000 in 64-bit code (0x006ffffeeca466).
 Register dump:
- rip:00006ffffeeca466 rsp:000000000198f4d8 rbp:000000000198fc10 eflags:00010202 (  R- --  I   - - - )
- rax:00000000000006f0 rbx:00000000014730b0 rcx:000000000198f510 rdx:0000000000000000
- rsi:0000000000000000 rdi:000000000198f510  r8:00000000000006e4  r9:0000000000198f51 r10:0000000001471530
- r11:0000000001471480 r12:00000000000001b9 r13:00006ffffc4ba100 r14:0000000001472440 r15:00000000000006f3
+ rip:00006ffffeeca466 rsp:000000000198f498 rbp:000000000198fbd0 eflags:00010202 (  R- --  I   - - - )
+ rax:00000000000006f0 rbx:0000000001495970 rcx:000000000198f4d0 rdx:0000000000000000
+ rsi:0000000000000000 rdi:000000000198f4d0  r8:00000000000006e4  r9:0000000000198f4d r10:00000000014715d0
+ r11:0000000001471520 r12:00000000000001b9 r13:00006ffffc4ba100 r14:0000000001472fd0 r15:00000000000006f3
 Stack dump:
-0x0000000198f4d8:  00000000000001b9 000000000198f510
-0x0000000198f4e8:  00006ffffc3ee292 0000000000000000
+0x0000000198f498:  00000000000001b9 000000000198f4d0
+0x0000000198f4a8:  00006ffffc3ee292 0000000000000000
+0x0000000198f4b8:  0000000000000000 0000000000000000
+0x0000000198f4c8:  0000000000000000 0000000000000000
+0x0000000198f4d8:  0000000000000000 0000000000000000
+0x0000000198f4e8:  0000000000000000 0000000000000000
 0x0000000198f4f8:  0000000000000000 0000000000000000
 0x0000000198f508:  0000000000000000 0000000000000000
 0x0000000198f518:  0000000000242200 00006fffffc682d0
 0x0000000198f528:  00006fffffbfe764 0000000000000000
 0x0000000198f538:  0000000000000000 0000000000000000
 0x0000000198f548:  0000000000242200 00006fffffc682d0
-0x0000000198f558:  000000000198fb00 0000000000242200
-0x0000000198f568:  00006fffffc3856e 0000000000000000
-0x0000000198f578:  0000000000000000 0000000000000000
-0x0000000198f588:  0000000a00000000 0000000000249890
 Backtrace:
-=>0 0x006ffffeeca466 in msvcrt (+0xa466) (0x0000000198fc10)
-  1 0x006ffffc3ee292 in gx_valvecaster (+0x1e292) (0x0000000198fc10)
-  2 0x00000140037a49 in violet (+0x37a49) (0x00000001471500)
-  3 0x000001400393da in violet (+0x393da) (0x00000000000002)
-  4 0x00000140001721 in violet (+0x1721) (0000000000000000)
-  5 0x00000140029bfb in violet (+0x29bfb) (0000000000000000)
+=>0 0x006ffffeeca466 in msvcrt (+0xa466) (0x0000000198fbd0)
+  1 0x006ffffc3ee292 in gx_valvecaster (+0x1e292) (0x0000000198fbd0)
+  2 0x00000140037e09 in violet (+0x37e09) (0x000000014715a0)
+  3 0x0000014003979a in violet (+0x3979a) (0x00000000000002)
+  4 0x000001400026bf in violet (+0x26bf) (0x00000001471b10)
+  5 0x00000140029fbb in violet (+0x29fbb) (0000000000000000)
   6 0x006ffff908522f in libstdc++-6 (+0x14522f) (0x0000000198ff10)
   7 0x006ffffa5d60fb in libwinpthread-1 (+0x60fb) (0x0000000198ff10)
-  8 0x006ffffeed26ee _beginthreadex_trampoline+0x3e(arg=0000000001470FD0) [/builddir/build/BUILD/wine-10.15-build/wine-10.15/dlls/msvcrt/thread.c:202] in msvcrt (0000000000000000)
+  8 0x006ffffeed26ee _beginthreadex_trampoline+0x3e(arg=0000000001471070) [/builddir/build/BUILD/wine-10.15-build/wine-10.15/dlls/msvcrt/thread.c:202] in msvcrt (0000000000000000)
   9 0x006fffffa25249 BaseThreadInitThunk+0x9(unknown=<internal error>, entry=<internal error>, arg=<internal error>) [/builddir/build/BUILD/wine-10.15-build/wine-10.15/dlls/kernel32/thread.c:61] in kernel32 (0000000000000000)
   10 0x006fffffc00c07 in ntdll (+0x10c07) (0000000000000000)
 0x006ffffeeca466 msvcrt+0xa466: movdqu (%rsi), %xmm0
 Modules:
 Module  Address                                 Debug info      Name (94 modules)
-PE             140000000-       140a7f000       Dwarf-5         violet
+PE             140000000-       140a8b000       Dwarf-5         violet
 PE-Wine     6ffff8c00000-    6ffff8ccf000       Deferred        uxtheme
 PE-Wine     6ffff8ce0000-    6ffff8d60000       Deferred        msacm32
 PE-Wine     6ffff8d70000-    6ffff8f25000       Deferred        winmm
@@ -74,58 +74,58 @@ PE-Wine     6fffff270000-    6fffff391000       Deferred        advapi32
 PE-Wine     6fffff3b0000-    6fffff9f4000       Deferred        kernelbase
 PE-Wine     6fffffa10000-    6fffffbd8000       Dwarf-4-5       kernel32
 PE-Wine     6fffffbf0000-    6ffffffee000       Dwarf-4-5       ntdll
-ELF         7f7dd6902000-    7f7dd6a16000       Deferred        libasound.so.2
-ELF         7f7dd6a42000-    7f7dd6a4e000       Deferred        libcap.so.2
-ELF         7f7dd6a4e000-    7f7dd6ac7000       Deferred        libmp3lame.so.0
-ELF         7f7dd6ac7000-    7f7dd6b24000       Deferred        libmpg123.so.0
-ELF         7f7dd6b24000-    7f7dd6b2e000       Deferred        libogg.so.0
-ELF         7f7dd6b2e000-    7f7dd6b99000       Deferred        libopus.so.0
-ELF         7f7dd6b99000-    7f7dd6c31000       Deferred        libvorbisenc.so.2
-ELF         7f7dd6c31000-    7f7dd6c60000       Deferred        libvorbis.so.0
-ELF         7f7dd6c60000-    7f7dd6cc4000       Deferred        libflac.so.14
-ELF         7f7dd6cc4000-    7f7dd6cd2000       Deferred        libgsm.so.1
-ELF         7f7dd6cd2000-    7f7dd6cd9000       Deferred        libasyncns.so.0
-ELF         7f7dd6cd9000-    7f7dd6dff000       Deferred        libsystemd.so.0
-ELF         7f7dd6dff000-    7f7dd6e7f000       Deferred        libsndfile.so.1
-ELF         7f7dd6e7f000-    7f7dd6ed3000       Deferred        libdbus-1.so.3
-ELF         7f7dd6ed3000-    7f7dd6f57000       Deferred        libpulsecommon-17.0.so
-ELF         7f7dd6f57000-    7f7dd6fa7000       Deferred        libpulse.so.0
-ELF         7f7dd6fb6000-    7f7dd6fcc000       Deferred        winealsa.so
-ELF         7f7dd6fd3000-    7f7dd6fe7000       Deferred        winepulse.so
-ELF         7f7dd6fe7000-    7f7dd6fee000       Deferred        libxfixes.so.3
-ELF         7f7dd6fee000-    7f7dd6ffb000       Deferred        libxcursor.so.1
-ELF         7f7dd77e5000-    7f7dd77f8000       Deferred        libxi.so.6
-ELF         7f7dd77f8000-    7f7dd77fc000       Deferred        libxcomposite.so.1
-ELF         7f7dd77fc000-    7f7dd7809000       Deferred        libxrandr.so.2
-ELF         7f7dd7809000-    7f7dd7815000       Deferred        libxrender.so.1
-ELF         7f7dd7815000-    7f7dd781c000       Deferred        libxxf86vm.so.1
-ELF         7f7dd781c000-    7f7dd7820000       Deferred        libxinerama.so.1
-ELF         7f7dd7820000-    7f7dd7825000       Deferred        libxau.so.6
-ELF         7f7dd7825000-    7f7dd784f000       Deferred        libxcb.so.1
-ELF         7f7dd784f000-    7f7dd7994000       Deferred        libx11.so.6
-ELF         7f7dd7994000-    7f7dd79a8000       Deferred        libxext.so.6
-ELF         7f7dd79d4000-    7f7dd7a45000       Deferred        winex11.so
-ELF         7f7dd7cb3000-    7f7dd7ce8000       Deferred        liblzma.so.5
-ELF         7f7dd7ce8000-    7f7dd7e46000       Deferred        libxml2.so.2
-ELF         7f7dd7e46000-    7f7dd7e96000       Deferred        libfontconfig.so.1
-ELF         7f7dd7e96000-    7f7dd7f41000       Deferred        libpcre2-8.so.0
-ELF         7f7dd7f41000-    7f7dd7f64000       Deferred        libbrotlicommon.so.1
-ELF         7f7dd7f64000-    7f7dd7f83000       Deferred        libgraphite2.so.3
-ELF         7f7dd7f83000-    7f7dd80d9000       Deferred        libglib-2.0.so.0
-ELF         7f7dd80d9000-    7f7dd8216000       Deferred        libharfbuzz.so.0
-ELF         7f7dd8216000-    7f7dd8250000       Deferred        libpng16.so.16
-ELF         7f7dd8250000-    7f7dd831a000       Deferred        libfreetype.so.6
-ELF         7f7dd831a000-    7f7dd8500000       Deferred        win32u.so
-ELF         7f7de668b000-    7f7de6699000       Deferred        libbrotlidec.so.1
-ELF         7f7de6699000-    7f7de66ad000       Deferred        libbz2.so.1
-ELF         7f7de66ad000-    7f7de66d9000       Deferred        libgcc_s.so.1
-ELF         7f7de6705000-    7f7de67f9000       Deferred        libm.so.6
-ELF         7f7de67f9000-    7f7de6814000       Deferred        libunwind.so.8
-ELF         7f7de6814000-    7f7de68d9000       Export          ntdll.so
-ELF         7f7de68dc000-    7f7de6ad0000       Deferred        libc.so.6
-ELF         7f7de6ad9000-    7f7de6afc000       Deferred        libz.so.1
-ELF         7f7de6afe000-    7f7de6b38000       Deferred        ld-linux-x86-64.so.2
-ELF         7f7de6b38000-    7f7de6b3c000       Deferred        <wine-loader>
+ELF         7feffedb1000-    7feffeec5000       Deferred        libasound.so.2
+ELF         7feffeef1000-    7feffeefd000       Deferred        libcap.so.2
+ELF         7feffeefd000-    7feffef76000       Deferred        libmp3lame.so.0
+ELF         7feffef76000-    7feffefd3000       Deferred        libmpg123.so.0
+ELF         7feffefd3000-    7feffefdd000       Deferred        libogg.so.0
+ELF         7feffefdd000-    7fefff048000       Deferred        libopus.so.0
+ELF         7fefff048000-    7fefff0e0000       Deferred        libvorbisenc.so.2
+ELF         7fefff0e0000-    7fefff10f000       Deferred        libvorbis.so.0
+ELF         7fefff10f000-    7fefff173000       Deferred        libflac.so.14
+ELF         7fefff173000-    7fefff181000       Deferred        libgsm.so.1
+ELF         7fefff181000-    7fefff188000       Deferred        libasyncns.so.0
+ELF         7fefff188000-    7fefff2ae000       Deferred        libsystemd.so.0
+ELF         7fefff2ae000-    7fefff32e000       Deferred        libsndfile.so.1
+ELF         7fefff32e000-    7fefff382000       Deferred        libdbus-1.so.3
+ELF         7fefff382000-    7fefff406000       Deferred        libpulsecommon-17.0.so
+ELF         7fefff406000-    7fefff456000       Deferred        libpulse.so.0
+ELF         7fefff465000-    7fefff47b000       Deferred        winealsa.so
+ELF         7fefff482000-    7fefff496000       Deferred        winepulse.so
+ELF         7fefff496000-    7fefff49d000       Deferred        libxfixes.so.3
+ELF         7fefff49d000-    7fefff4aa000       Deferred        libxcursor.so.1
+ELF         7fefffc94000-    7fefffca7000       Deferred        libxi.so.6
+ELF         7fefffca7000-    7fefffcab000       Deferred        libxcomposite.so.1
+ELF         7fefffcab000-    7fefffcb8000       Deferred        libxrandr.so.2
+ELF         7fefffcb8000-    7fefffcc4000       Deferred        libxrender.so.1
+ELF         7fefffcc4000-    7fefffccb000       Deferred        libxxf86vm.so.1
+ELF         7fefffccb000-    7fefffccf000       Deferred        libxinerama.so.1
+ELF         7fefffccf000-    7fefffcd4000       Deferred        libxau.so.6
+ELF         7fefffcd4000-    7fefffcfe000       Deferred        libxcb.so.1
+ELF         7fefffcfe000-    7fefffe43000       Deferred        libx11.so.6
+ELF         7fefffe43000-    7fefffe57000       Deferred        libxext.so.6
+ELF         7fefffe83000-    7fefffef4000       Deferred        winex11.so
+ELF         7ff000179000-    7ff0001ae000       Deferred        liblzma.so.5
+ELF         7ff0001ae000-    7ff00030c000       Deferred        libxml2.so.2
+ELF         7ff00030c000-    7ff00035c000       Deferred        libfontconfig.so.1
+ELF         7ff00035c000-    7ff000407000       Deferred        libpcre2-8.so.0
+ELF         7ff000407000-    7ff00042a000       Deferred        libbrotlicommon.so.1
+ELF         7ff00042a000-    7ff000449000       Deferred        libgraphite2.so.3
+ELF         7ff000449000-    7ff00059f000       Deferred        libglib-2.0.so.0
+ELF         7ff00059f000-    7ff0005ad000       Deferred        libbrotlidec.so.1
+ELF         7ff0005ad000-    7ff0006ea000       Deferred        libharfbuzz.so.0
+ELF         7ff0006ea000-    7ff000724000       Deferred        libpng16.so.16
+ELF         7ff000724000-    7ff0007ee000       Deferred        libfreetype.so.6
+ELF         7ff0007ee000-    7ff00081a000       Deferred        libgcc_s.so.1
+ELF         7ff00081a000-    7ff000a00000       Deferred        win32u.so
+ELF         7ff00ea74000-    7ff00ea88000       Deferred        libbz2.so.1
+ELF         7ff00ebb4000-    7ff00eca8000       Deferred        libm.so.6
+ELF         7ff00eca8000-    7ff00ecc3000       Deferred        libunwind.so.8
+ELF         7ff00ecc3000-    7ff00ed88000       Export          ntdll.so
+ELF         7ff00ed8b000-    7ff00ef7f000       Deferred        libc.so.6
+ELF         7ff00ef88000-    7ff00efab000       Deferred        libz.so.1
+ELF         7ff00efad000-    7ff00efe7000       Deferred        ld-linux-x86-64.so.2
+ELF         7ff00efe7000-    7ff00efeb000       Deferred        <wine-loader>
 Threads:
 process  tid      prio    name (all IDs are in hex)
 00000020 (D) Z:\home\djshaji\projects\violet\build\violet.exe

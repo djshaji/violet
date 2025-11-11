@@ -13,6 +13,7 @@
 #include "violet/resource.h"
 #include <commctrl.h>
 #include <windowsx.h>
+#include <iostream>
 
 namespace violet {
 
@@ -237,19 +238,74 @@ void MainWindow::OnCreate() {
     
     // Set up audio callback to process through chain
     if (audioEngine_ && processingChain_) {
+        // Pre-allocate audio buffers to avoid reallocation during processing
+        audioBufferLeft_.resize(1024);  // Max expected buffer size
+        audioBufferRight_.resize(1024);
+        audioBufferLeftOut_.resize(1024);
+        audioBufferRightOut_.resize(1024);
+        
         audioEngine_->SetAudioCallback(
             [](float* input, float* output, uint32_t frames, void* userData) {
-                auto* chain = static_cast<AudioProcessingChain*>(userData);
-                if (chain) {
-                    // Create buffer pointers for processing
-                    float* inputBuffers[2] = { input, input + frames };
-                    float* outputBuffers[2] = { output, output + frames };
-                    
-                    // Process through the plugin chain
-                    chain->Process(inputBuffers, outputBuffers, 2, frames);
+                auto* mainWindow = static_cast<MainWindow*>(userData);
+                if (!mainWindow || !mainWindow->processingChain_) {
+                    // Bypass: copy input to output
+                    if (input && output) {
+                        memcpy(output, input, frames * 2 * sizeof(float));
+                    }
+                    return;
+                }
+                
+                auto* chain = mainWindow->processingChain_.get();
+                
+                // De-interleave input: WASAPI provides interleaved stereo (L,R,L,R,...)
+                // Chain expects planar buffers (LLLL..., RRRR...)
+                std::vector<float>& leftIn = mainWindow->audioBufferLeft_;
+                std::vector<float>& rightIn = mainWindow->audioBufferRight_;
+                std::vector<float>& leftOut = mainWindow->audioBufferLeftOut_;
+                std::vector<float>& rightOut = mainWindow->audioBufferRightOut_;
+                
+                // Ensure buffers are large enough (but don't shrink to avoid reallocation)
+                if (leftIn.size() < frames) {
+                    leftIn.resize(frames);
+                    rightIn.resize(frames);
+                    leftOut.resize(frames);
+                    rightOut.resize(frames);
+                }
+                
+                // Validate input/output pointers
+                if (!input || !output) {
+                    std::cerr << "Error: NULL audio buffer in callback" << std::endl;
+                    return;
+                }
+                
+                // De-interleave input
+                for (uint32_t i = 0; i < frames; ++i) {
+                    leftIn[i] = input[i * 2];
+                    rightIn[i] = input[i * 2 + 1];
+                }
+                
+                // Create planar buffer pointers
+                float* inputBuffers[2] = { leftIn.data(), rightIn.data() };
+                float* outputBuffers[2] = { leftOut.data(), rightOut.data() };
+                
+                // Validate buffer pointers
+                if (!inputBuffers[0] || !inputBuffers[1] || !outputBuffers[0] || !outputBuffers[1]) {
+                    std::cerr << "Error: NULL buffer pointer after data()" << std::endl;
+                    memcpy(output, input, frames * 2 * sizeof(float));
+                    return;
+                }
+                
+                // Process through the plugin chain
+                // Note: Process all frames at once - the chain will handle chunking internally
+                chain->Process(inputBuffers, outputBuffers, 2, frames);
+                
+                // Interleave output back to WASAPI format
+                for (uint32_t i = 0; i < frames; ++i) {
+                    output[i * 2] = leftOut[i];
+                    output[i * 2 + 1] = rightOut[i];
                 }
             },
-            processingChain_.get()
+            this  // Pass MainWindow as user data
         );
         
         // Set audio format in engine to match chain

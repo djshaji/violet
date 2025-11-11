@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <string>
 #include <memory>
+#include <vector>
 #include <cstdint>
 
 namespace violet {
@@ -90,6 +91,12 @@ private:
     std::unique_ptr<AudioEngine> audioEngine_;
     std::unique_ptr<AudioProcessingChain> processingChain_;
     std::unique_ptr<SessionManager> sessionManager_;
+    
+    // Audio buffers for de-interleaving (used in audio callback)
+    std::vector<float> audioBufferLeft_;
+    std::vector<float> audioBufferRight_;
+    std::vector<float> audioBufferLeftOut_;
+    std::vector<float> audioBufferRightOut_;
     
     // Window properties
     static const wchar_t* CLASS_NAME;
