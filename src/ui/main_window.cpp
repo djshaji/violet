@@ -7,6 +7,7 @@
 #include "violet/audio_processing_chain.h"
 #include "violet/theme_manager.h"
 #include "violet/session_manager.h"
+#include "violet/audio_settings_dialog.h"
 #include "violet/utils.h"
 #include "violet/resource.h"
 #include <commctrl.h>
@@ -360,6 +361,10 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
         ThemeManager::GetInstance().SetTheme(ThemeType::System);
         break;
     
+    case IDM_AUDIO_SETTINGS:
+        OnAudioSettings();
+        break;
+    
     case IDM_AUDIO_START:
         if (audioEngine_ && !audioEngine_->IsRunning()) {
             if (audioEngine_->Start()) {
@@ -367,7 +372,12 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
                     SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Running");
                 }
             } else {
-                MessageBox(hwnd_, L"Failed to start audio engine", L"Error", MB_OK | MB_ICONERROR);
+                std::wstring errorMsg = L"Failed to start audio engine.\n\nPossible reasons:\n";
+                errorMsg += L"• No audio output device available\n";
+                errorMsg += L"• Audio device is in use by another application\n";
+                errorMsg += L"• Invalid audio format settings\n\n";
+                errorMsg += L"Please check Audio > Audio Settings to configure devices.";
+                MessageBox(hwnd_, errorMsg.c_str(), L"Audio Engine Error", MB_OK | MB_ICONERROR);
             }
         }
         break;
@@ -702,6 +712,22 @@ void MainWindow::OnSaveSessionAs() {
             }
         } else {
             MessageBox(hwnd_, L"Failed to save session file", L"Error", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void MainWindow::OnAudioSettings() {
+    if (!audioEngine_) {
+        MessageBox(hwnd_, L"Audio engine not initialized", L"Error", MB_OK | MB_ICONERROR);
+        return;
+    }
+    
+    // Create and show audio settings dialog
+    AudioSettingsDialog settingsDialog;
+    if (settingsDialog.Show(hwnd_, audioEngine_.get())) {
+        // Settings were applied successfully
+        if (hStatusBar_) {
+            SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)L"Audio settings updated");
         }
     }
 }

@@ -4,7 +4,7 @@
 ## Project Status Summary (Updated: November 11, 2025)
 
 **Current Phase**: Phase 5 (Advanced Features) - In Progress  
-**Overall Completion**: ~92%
+**Overall Completion**: ~94%
 
 ### Completed Components ✅
 - ✅ **Core Infrastructure**: Meson build system, cross-compilation setup, basic application structure
@@ -23,6 +23,8 @@
 - ✅ **Theme System**: Light/Dark/System theme support with modern styling
 - ✅ **Session Management**: Save/Load sessions with full plugin chain and parameter state
 - ✅ **Real-time Audio I/O**: Auto-start audio engine with live plugin processing
+- ✅ **Audio Settings Dialog**: Device selection (input/output), sample rate and buffer size configuration
+- ✅ **Error Handling**: Detailed error messages for audio engine failures with troubleshooting guidance
 
 ### In Progress 🔄
 - 🔄 **Documentation**: Needs user manual and comprehensive guides
@@ -65,11 +67,12 @@ violet/
 │   │   ├── audio_buffer.cpp/h   # Audio buffer management
 │   │   └── midi_handler.cpp/h   # MIDI input handling
 │   ├── ui/
-│   │   ├── main_window.cpp/h    # Main application window
-│   │   ├── plugin_browser.cpp/h # Left panel plugin browser
-│   │   ├── plugin_window.cpp/h  # Individual plugin windows
-│   │   ├── controls.cpp/h       # UI controls (sliders, knobs)
-│   │   └── theme_manager.cpp/h  # Light/dark theme support
+│   │   ├── main_window.cpp/h         # Main application window
+│   │   ├── plugin_browser.cpp/h      # Left panel plugin browser
+│   │   ├── plugin_window.cpp/h       # Individual plugin windows
+│   │   ├── audio_settings_dialog.cpp/h # Audio device/format configuration
+│   │   ├── controls.cpp/h            # UI controls (sliders, knobs)
+│   │   └── theme_manager.cpp/h       # Light/dark theme support
 │   ├── core/
 │   │   ├── session_manager.cpp/h # Save/load sessions
 │   │   ├── config_manager.cpp/h  # Application settings

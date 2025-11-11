@@ -4,13 +4,17 @@ A lightweight LV2 plugin host for real-time audio processing on Windows.
 
 ## Features
 
-### ✅ Implemented (v0.75)
+### ✅ Implemented (v0.78)
 
 **Audio Engine**
 - ✅ WASAPI audio backend with device enumeration
 - ✅ Real-time audio processing with configurable buffer sizes
 - ✅ Low-latency audio pipeline (< 10ms roundtrip)
 - ✅ Multi-channel audio support
+- ✅ Audio device selection (input/output)
+- ✅ Sample rate configuration (44.1kHz - 192kHz)
+- ✅ Buffer size configuration (64 - 2048 samples)
+- ✅ Detailed error messages with troubleshooting guidance
 
 **Plugin Management**
 - ✅ LV2 plugin discovery and loading (LILV integration)
@@ -35,6 +39,11 @@ A lightweight LV2 plugin host for real-time audio processing on Windows.
   - Auto-expand/collapse functionality
   - Vertical scrolling for many plugins
 - ✅ **Plugin Parameters Window**: Floating window with detailed controls
+- ✅ **Audio Settings Dialog**: Configure audio devices and format
+  - Select input and output audio devices
+  - Choose sample rate and buffer size
+  - Real-time device enumeration
+  - Hot-swap audio devices without restart
 - ✅ **Drag-and-Drop**: Drag plugins from browser to active panel to load
 - ✅ Plugin loading via double-click from browser
 - ✅ CPU usage and latency monitoring in status bar
@@ -139,25 +148,29 @@ ninja -C build
    - Click bypass button to enable/disable a plugin
    - Click remove button to remove a plugin
    - Click "Remove All Plugins" to clear the entire chain
-6. **Control Audio**:
+6. **Configure Audio**:
+   - Audio → Audio Settings to select audio devices
+   - Choose sample rate and buffer size for optimal performance
+   - Changes applied immediately (engine restarts if running)
+7. **Control Audio**:
    - Audio → Start to begin processing
    - Audio → Stop to pause processing
    - Monitor CPU usage and latency in status bar
-7. **Save Your Work**:
+8. **Save Your Work**:
    - File → Save Session to save your current plugin chain
    - File → Open Session to load a previously saved setup
    - Sessions include all plugins and their parameter values
 
 ## Project Status
 
-**Overall Completion**: ~92%
+**Overall Completion**: ~94%
 
 **Completed Phases**:
 - ✅ Phase 1: Core Infrastructure (100%)
 - ✅ Phase 2: Audio Engine Foundation (100%)
 - ✅ Phase 3: Plugin Management (100%)
 - ✅ Phase 4: User Interface Implementation (100%)
-- 🔄 Phase 5: Advanced Features (60%)
+- 🔄 Phase 5: Advanced Features (70%)
 
 **Current Focus**: Audio file I/O, testing, and documentation
 
@@ -180,6 +193,7 @@ src/
 │   ├── main_window.cpp           # Main application window
 │   ├── plugin_browser.cpp        # Plugin browser tree view
 │   ├── active_plugins_panel.cpp  # Active plugins with inline controls
+│   ├── audio_settings_dialog.cpp # Audio device/format configuration
 │   └── plugin_parameters_window.cpp # Floating parameters window
 ├── core/
 │   ├── config_manager.cpp        # Settings persistence
