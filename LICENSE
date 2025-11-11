@@ -1,0 +1,107 @@
+MIT License
+
+Copyright (c) 2025 Violet Audio
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+THIRD-PARTY COMPONENTS AND PLUGINS
+
+This software uses the following third-party libraries:
+
+1. LILV - LV2 Plugin Loading Library
+   Copyright (c) David Robillard
+   License: ISC License
+   Website: https://drobilla.net/software/lilv.html
+
+2. LV2 - Audio Plugin Standard
+   Copyright (c) LV2 Developers
+   License: ISC License
+   Website: https://lv2plug.in/
+
+3. MinGW-w64 Runtime
+   License: Various (Public Domain, ZPL)
+   Website: https://www.mingw-w64.org/
+
+IMPORTANT NOTICE REGARDING LV2 PLUGINS
+
+Violet is an LV2 plugin host application. LV2 plugins are separate software
+components that are NOT included with or part of this software. Each LV2
+plugin has its own copyright holder(s) and license terms.
+
+When using Violet with LV2 plugins:
+
+1. PLUGINS ARE SEPARATE: LV2 plugins are independent software packages with
+   their own authors, copyright holders, and license agreements.
+
+2. PLUGIN LICENSES VARY: Plugins may be released under different licenses
+   including but not limited to:
+   - GPL (GNU General Public License) v2 or v3
+   - LGPL (GNU Lesser General Public License)
+   - MIT License
+   - BSD License
+   - Apache License
+   - Proprietary/Commercial licenses
+   - Other open source or closed source licenses
+
+3. USER RESPONSIBILITY: It is the USER'S RESPONSIBILITY to:
+   - Obtain plugins from legitimate sources
+   - Review and comply with each plugin's license terms
+   - Ensure they have the right to use each plugin
+   - Respect plugin authors' copyright and licensing requirements
+
+4. NO WARRANTY FOR PLUGINS: Violet developers make no warranties about
+   third-party plugins and are not responsible for:
+   - Plugin functionality, quality, or performance
+   - Plugin compatibility or stability
+   - Plugin licensing compliance
+   - Any damages caused by third-party plugins
+
+5. PLUGIN DISCOVERY: Violet scans for and loads LV2 plugins installed on
+   your system. The presence of a plugin in Violet does not imply:
+   - Endorsement by Violet developers
+   - That the plugin is free or open source
+   - Permission to use the plugin
+   - Any warranty or support
+
+6. COMMERCIAL USE: If you plan to use Violet with plugins in a commercial
+   setting, ensure that:
+   - You have proper licenses for all plugins used
+   - Commercial use is permitted by each plugin's license
+   - You comply with any additional terms for commercial usage
+
+RECOMMENDED PLUGIN SOURCES
+
+Free and Open Source LV2 Plugins:
+- Guitarix (GPLv3): https://guitarix.org/
+- Calf Studio Gear (LGPL): https://calf-studio-gear.org/
+- LSP Plugins (LGPL): https://lsp-plug.in/
+- ZamAudio (GPL): https://www.zamaudio.com/
+- Invada Studio (GPL): https://launchpad.net/invada-studio
+- MDA (MIT/GPL): http://mda.smartelectronix.com/
+
+Always verify current license terms from the plugin authors.
+
+DISCLAIMER
+
+THE VIOLET SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+THE AUTHORS OR COPYRIGHT HOLDERS SHALL NOT BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THIS SOFTWARE OR
+ANY THIRD-PARTY PLUGINS USED WITH THIS SOFTWARE.

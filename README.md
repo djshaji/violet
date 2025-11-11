@@ -122,44 +122,97 @@ ninja -C build
 ./build.sh
 ```
 
-## Running
+### Building the Windows Installer
 
-### Requirements
-- Windows 10 or later
-- LV2 plugins installed (the application will scan standard LV2 paths)
+Requires NSIS (Nullsoft Scriptable Install System):
 
-### Quick Start
+1. Prepare the distribution directory:
+```bash
+mkdir -p /home/djshaji/projects/violet-dist
+cp build/violet.exe violet-dist/
+cp build/violet-console.exe violet-dist/
+cp README.md violet-dist/README.txt
+cp LICENSE violet-dist/LICENSE.txt
+```
+
+2. Build the installer:
+```bash
+makensis violet-installer.nsi
+```
+
+3. The installer will be created as `violet-0.78-setup.exe`
+
+## Installation
+
+### Windows Installer (Recommended)
+
+1. Download `violet-0.78-setup.exe` from the releases page
+2. Run the installer (requires administrator privileges)
+3. The installer will:
+   - Install Violet to `C:\Program Files\Violet`
+   - Create Start Menu shortcuts
+   - Create a desktop shortcut
+   - Set up the LV2_PATH environment variable
+   - Register the application in Add/Remove Programs
+4. Launch Violet from the Start Menu or desktop shortcut
+
+### Manual Installation
 
 1. Copy the executable to a Windows machine
 2. Place LV2 plugins in a directory
 3. Set `LV2_PATH` environment variable or run from plugin directory
 4. Launch `violet.exe`
 
+### Requirements
+- Windows 10 or later (64-bit)
+- LV2 plugins (the application will scan standard LV2 paths)
+- Audio interface (WASAPI-compatible, built into Windows)
+
 ### Using the Application
 
-1. **Audio Engine**: Automatically starts on launch with default audio device
-2. **Browse Plugins**: Use the left panel to search and browse available LV2 plugins
-3. **Load Plugins**: 
-   - Double-click a plugin in the browser to add it to the chain
-   - **OR drag-and-drop** a plugin from the browser to the active panel
-4. **Adjust Parameters**: Use inline sliders in the active plugins panel
-   - Changes are applied in real-time to the audio
-5. **Control Plugins**: 
-   - Click bypass button to enable/disable a plugin
-   - Click remove button to remove a plugin
-   - Click "Remove All Plugins" to clear the entire chain
-6. **Configure Audio**:
-   - Audio → Audio Settings to select audio devices
-   - Choose sample rate and buffer size for optimal performance
-   - Changes applied immediately (engine restarts if running)
-7. **Control Audio**:
-   - Audio → Start to begin processing
-   - Audio → Stop to pause processing
-   - Monitor CPU usage and latency in status bar
-8. **Save Your Work**:
-   - File → Save Session to save your current plugin chain
-   - File → Open Session to load a previously saved setup
-   - Sessions include all plugins and their parameter values
+See [docs/USER_GUIDE.md](docs/USER_GUIDE.md) for comprehensive documentation.
+
+#### Quick Start Guide
+
+1. **First Launch**
+   - The audio engine starts automatically with your default audio device
+   - If no audio device is detected, go to Audio → Audio Settings
+
+2. **Loading Plugins**
+   - Browse available LV2 plugins in the left panel
+   - Use the search box to filter plugins by name
+   - **Double-click** a plugin to add it to your chain
+   - **OR drag-and-drop** from browser to the active plugins panel
+
+3. **Controlling Plugins**
+   - **Adjust parameters**: Use inline sliders in the active plugins panel
+   - **Real-time updates**: Changes apply immediately to audio
+   - **Bypass**: Click the bypass button (B) to disable a plugin temporarily
+   - **Remove**: Click the X button to remove a plugin from the chain
+   - **Reorder**: Drag plugins up/down in the chain (planned feature)
+
+4. **Audio Configuration**
+   - Go to **Audio → Audio Settings** to configure:
+     - Input/Output audio devices
+     - Sample rate (44.1kHz, 48kHz, 96kHz, 192kHz)
+     - Buffer size (64-2048 samples, affects latency)
+   - Changes apply immediately (engine restarts if needed)
+
+5. **Managing Sessions**
+   - **File → New Session**: Clear current chain and start fresh
+   - **File → Save Session**: Save plugin chain with all parameters
+   - **File → Open Session**: Load a previously saved setup
+   - Sessions are saved as `.violet` files
+
+6. **Monitoring Performance**
+   - **CPU Usage**: Displayed in the status bar (lower right)
+   - **Latency**: Round-trip audio latency shown in status bar
+   - High CPU usage? Increase buffer size in Audio Settings
+
+7. **Themes**
+   - **View → Theme**: Choose Light, Dark, or System theme
+   - Dark theme is ideal for low-light studio environments
+   - Theme preference is saved automatically
 
 ## Project Status
 
@@ -211,4 +264,21 @@ src/
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
+
+### Important Note About Plugin Licenses
+
+**Violet is an LV2 plugin host. LV2 plugins are separate software with their own licenses.**
+
+Each LV2 plugin you use with Violet:
+- Has its own copyright holder(s) and license terms
+- May be GPL, LGPL, MIT, BSD, Apache, proprietary, or other licenses
+- Is the user's responsibility to obtain legally and use compliantly
+- Is NOT covered by Violet's MIT license
+
+Before using any plugin:
+1. Check the plugin's license terms
+2. Ensure you have the right to use it (especially for commercial use)
+3. Comply with the plugin's license requirements
+
+Violet makes no warranties about third-party plugins. See [LICENSE](LICENSE) for complete details.
