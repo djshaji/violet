@@ -59,6 +59,15 @@ A lightweight LV2 plugin host for real-time audio processing on Windows.
 - ✅ Recent sessions tracking
 - ✅ File → New/Open/Save/Save As menu integration
 
+**Real-time Audio Processing**
+- ✅ WASAPI audio engine with low-latency processing
+- ✅ Auto-start on application launch
+- ✅ Real-time plugin chain processing
+- ✅ Audio → Start/Stop menu controls
+- ✅ Live CPU usage and latency monitoring in status bar
+- ✅ Configurable sample rates (44.1kHz - 192kHz)
+- ✅ Configurable buffer sizes (64 - 2048 samples)
+
 ### 🚧 In Progress
 
 - 🚧 Audio file playback and recording
@@ -119,33 +128,38 @@ ninja -C build
 
 ### Using the Application
 
-1. **Browse Plugins**: Use the left panel to search and browse available LV2 plugins
-2. **Load Plugins**: 
+1. **Audio Engine**: Automatically starts on launch with default audio device
+2. **Browse Plugins**: Use the left panel to search and browse available LV2 plugins
+3. **Load Plugins**: 
    - Double-click a plugin in the browser to add it to the chain
    - **OR drag-and-drop** a plugin from the browser to the active panel
-3. **Adjust Parameters**: Use inline sliders in the active plugins panel
-4. **Control Plugins**: 
+4. **Adjust Parameters**: Use inline sliders in the active plugins panel
+   - Changes are applied in real-time to the audio
+5. **Control Plugins**: 
    - Click bypass button to enable/disable a plugin
    - Click remove button to remove a plugin
    - Click "Remove All Plugins" to clear the entire chain
-5. **Save Your Work**:
+6. **Control Audio**:
+   - Audio → Start to begin processing
+   - Audio → Stop to pause processing
+   - Monitor CPU usage and latency in status bar
+7. **Save Your Work**:
    - File → Save Session to save your current plugin chain
    - File → Open Session to load a previously saved setup
    - Sessions include all plugins and their parameter values
-6. **Monitor Performance**: Check CPU usage and latency in the status bar
 
 ## Project Status
 
-**Overall Completion**: ~88%
+**Overall Completion**: ~92%
 
 **Completed Phases**:
 - ✅ Phase 1: Core Infrastructure (100%)
 - ✅ Phase 2: Audio Engine Foundation (100%)
 - ✅ Phase 3: Plugin Management (100%)
 - ✅ Phase 4: User Interface Implementation (100%)
-- 🔄 Phase 5: Advanced Features (40%)
+- 🔄 Phase 5: Advanced Features (60%)
 
-**Current Focus**: Testing, documentation, and audio file I/O
+**Current Focus**: Audio file I/O, testing, and documentation
 
 **Current Focus**: Enhancing UI with drag-and-drop and theme system
 

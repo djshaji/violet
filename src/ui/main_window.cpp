@@ -164,6 +164,28 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
         }
         return 0;
     }
+    
+    case WM_TIMER:
+        // Update status bar with audio stats
+        if (wParam == 1 && audioEngine_ && processingChain_) {
+            if (hStatusBar_) {
+                // Update CPU usage
+                double cpu = processingChain_->GetCpuUsage();
+                std::wstring cpuText = L"CPU: " + std::to_wstring(static_cast<int>(cpu)) + L"%";
+                SendMessage(hStatusBar_, SB_SETTEXT, 2, (LPARAM)cpuText.c_str());
+                
+                // Update audio status
+                if (audioEngine_->IsRunning()) {
+                    double latency = audioEngine_->GetLatency();
+                    std::wstring statusText = L"Audio: Running (" + 
+                        std::to_wstring(static_cast<int>(latency)) + L"ms)";
+                    SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)statusText.c_str());
+                } else {
+                    SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Stopped");
+                }
+            }
+        }
+        return 0;
         
     case WM_NOTIFY: {
         NMHDR* pnmhdr = reinterpret_cast<NMHDR*>(lParam);
@@ -211,6 +233,39 @@ void MainWindow::OnCreate() {
     // Initialize session manager
     sessionManager_ = std::make_unique<SessionManager>();
     
+    // Set up audio callback to process through chain
+    if (audioEngine_ && processingChain_) {
+        audioEngine_->SetAudioCallback(
+            [](float* input, float* output, uint32_t frames, void* userData) {
+                auto* chain = static_cast<AudioProcessingChain*>(userData);
+                if (chain) {
+                    // Create buffer pointers for processing
+                    float* inputBuffers[2] = { input, input + frames };
+                    float* outputBuffers[2] = { output, output + frames };
+                    
+                    // Process through the plugin chain
+                    chain->Process(inputBuffers, outputBuffers, 2, frames);
+                }
+            },
+            processingChain_.get()
+        );
+        
+        // Set audio format in engine to match chain
+        AudioFormat format;
+        format.sampleRate = 44100;
+        format.channels = 2;
+        format.bufferSize = 256;
+        format.bitsPerSample = 32;
+        audioEngine_->SetFormat(format);
+        
+        // Start audio engine automatically
+        if (audioEngine_->Start()) {
+            if (hStatusBar_) {
+                SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Running");
+            }
+        }
+    }
+    
     // Create UI components
     CreateMenuBar();
     CreateToolBar();
@@ -221,6 +276,9 @@ void MainWindow::OnCreate() {
     // Apply theme to main window
     ThemeManager::GetInstance().ApplyToWindow(hwnd_);
     
+    // Set up timer for status bar updates (every 500ms)
+    SetTimer(hwnd_, 1, 500, nullptr);
+    
     // Update status bar with initial state
     if (hStatusBar_) {
         std::wstring pluginCount = L"Plugins: " + std::to_wstring(
@@ -230,6 +288,14 @@ void MainWindow::OnCreate() {
 }
 
 void MainWindow::OnDestroy() {
+    // Kill timer
+    KillTimer(hwnd_, 1);
+    
+    // Stop audio engine before destroying
+    if (audioEngine_ && audioEngine_->IsRunning()) {
+        audioEngine_->Stop();
+    }
+    
     PostQuitMessage(0);
 }
 
@@ -292,6 +358,27 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
     
     case IDM_VIEW_THEME_SYSTEM:
         ThemeManager::GetInstance().SetTheme(ThemeType::System);
+        break;
+    
+    case IDM_AUDIO_START:
+        if (audioEngine_ && !audioEngine_->IsRunning()) {
+            if (audioEngine_->Start()) {
+                if (hStatusBar_) {
+                    SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Running");
+                }
+            } else {
+                MessageBox(hwnd_, L"Failed to start audio engine", L"Error", MB_OK | MB_ICONERROR);
+            }
+        }
+        break;
+    
+    case IDM_AUDIO_STOP:
+        if (audioEngine_ && audioEngine_->IsRunning()) {
+            audioEngine_->Stop();
+            if (hStatusBar_) {
+                SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Stopped");
+            }
+        }
         break;
         
     default:
