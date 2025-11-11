@@ -72,6 +72,7 @@ private:
     // Control parameters
     std::vector<float> controlValues_;
     std::vector<bool> parameterChanged_;
+    std::vector<float> controlOutputDummy_;  // Dummy buffers for control output ports
     
     // Channel routing
     std::vector<uint32_t> inputChannels_;

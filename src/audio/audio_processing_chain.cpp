@@ -25,20 +25,26 @@ ProcessingNode::ProcessingNode(std::unique_ptr<PluginInstance> plugin, uint32_t 
             outputChannels_.push_back(i);
         }
         
-        // Initialize control values
-        auto parameters = plugin_->GetParameters();
-        controlValues_.resize(parameters.size());
-        parameterChanged_.resize(parameters.size(), false);
+        // Initialize control values - allocate for ALL control inputs
+        controlValues_.resize(info.controlInputs, 0.0f);
+        parameterChanged_.resize(info.controlInputs, false);
         
-        for (const auto& param : parameters) {
-            if (param.index < controlValues_.size()) {
-                controlValues_[param.index] = param.defaultValue;
-            }
+        // Set default values from parameter info
+        auto parameters = plugin_->GetParameters();
+        for (size_t i = 0; i < parameters.size() && i < controlValues_.size(); ++i) {
+            controlValues_[i] = parameters[i].defaultValue;
         }
     }
     
     AllocateBuffers();
     ConnectPorts();
+    
+    // Activate plugin immediately after connecting ports
+    // This is required by LV2 spec: all ports must be connected before activation
+    if (plugin_) {
+        std::cout << "Activating plugin in ProcessingNode constructor: " << plugin_->GetInfo().name << std::endl;
+        plugin_->Activate();
+    }
 }
 
 ProcessingNode::~ProcessingNode() {
@@ -74,6 +80,10 @@ void ProcessingNode::AllocateBuffers() {
             std::cerr << "Error: Failed to allocate output buffer " << i << std::endl;
         }
     }
+    
+    // Allocate dummy buffers for control output ports (monitor ports)
+    controlOutputDummy_.resize(info.controlOutputs, 0.0f);
+    std::cout << "Allocated " << info.controlOutputs << " dummy control output ports" << std::endl;
 }
 
 void ProcessingNode::ConnectPorts() {
@@ -91,12 +101,16 @@ void ProcessingNode::ConnectPorts() {
         plugin_->ConnectAudioOutput(i, outputPtrs_[i]);
     }
     
-    // Connect control ports
-    auto parameters = plugin_->GetParameters();
-    for (const auto& param : parameters) {
-        if (param.index < controlValues_.size()) {
-            plugin_->ConnectControlInput(param.index, &controlValues_[param.index]);
+    // Connect ALL control input ports
+    for (uint32_t i = 0; i < info.controlInputs; ++i) {
+        if (i < controlValues_.size()) {
+            plugin_->ConnectControlInput(i, &controlValues_[i]);
         }
+    }
+    
+    // Connect control output ports (monitor/meter ports) to dummy buffers
+    for (uint32_t i = 0; i < info.controlOutputs && i < controlOutputDummy_.size(); ++i) {
+        plugin_->ConnectControlOutput(i, &controlOutputDummy_[i]);
     }
 }
 

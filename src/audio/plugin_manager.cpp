@@ -111,20 +111,25 @@ void PluginInstance::InitializePorts() {
     info_.midiInputs = 0;
     info_.midiOutputs = 0;
     
+    std::cout << "=== Enumerating ports for plugin: " << info_.name << " (total ports: " << numPorts << ") ===" << std::endl;
+    
     for (uint32_t i = 0; i < numPorts; ++i) {
         const LilvPort* port = lilv_plugin_get_port_by_index(plugin_, i);
         
         // Check port type
         if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__AudioPort))) {
             if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__InputPort))) {
+                std::cout << "  Port " << i << ": Audio Input" << std::endl;
                 audioInputPorts_.push_back(i);
                 info_.audioInputs++;
             } else if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__OutputPort))) {
+                std::cout << "  Port " << i << ": Audio Output" << std::endl;
                 audioOutputPorts_.push_back(i);
                 info_.audioOutputs++;
             }
         } else if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__ControlPort))) {
             if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__InputPort))) {
+                std::cout << "  Port " << i << ": Control Input" << std::endl;
                 controlInputPorts_.push_back(i);
                 info_.controlInputs++;
                 
@@ -138,6 +143,8 @@ void PluginInstance::InitializePorts() {
                 LilvNode* nameNode = const_cast<LilvNode*>(lilv_port_get_name(plugin_, port));
                 paramInfo.name = nameNode ? lilv_node_as_string(nameNode) : paramInfo.symbol;
                 if (nameNode) lilv_node_free(nameNode);
+                
+                std::cout << "    Name: " << paramInfo.name << ", Symbol: " << paramInfo.symbol << std::endl;
                 
                 // Get default, min, max values
                 LilvNode* defaultNode = nullptr;
@@ -165,6 +172,7 @@ void PluginInstance::InitializePorts() {
                 controlValues_[i] = paramInfo.defaultValue;
                 
             } else if (lilv_port_is_a(plugin_, port, lilv_new_uri(world_, LV2_CORE__OutputPort))) {
+                std::cout << "  Port " << i << ": Control Output" << std::endl;
                 controlOutputPorts_.push_back(i);
                 info_.controlOutputs++;
             }
@@ -201,27 +209,87 @@ void PluginInstance::Process(uint32_t frames) {
 }
 
 void PluginInstance::ConnectAudioInput(uint32_t port, float* buffer) {
-    if (instance_) {
-        lilv_instance_connect_port(instance_, port, buffer);
+    if (!instance_) {
+        std::cerr << "Error: instance_ is NULL in ConnectAudioInput" << std::endl;
+        return;
     }
+    
+    if (port >= audioInputPorts_.size()) {
+        std::cerr << "Error: audio input port " << port << " out of range (size=" << audioInputPorts_.size() << ")" << std::endl;
+        return;
+    }
+    
+    if (!buffer) {
+        std::cerr << "Error: NULL buffer passed to ConnectAudioInput port " << port << std::endl;
+        return;
+    }
+    
+    uint32_t actualPortIndex = audioInputPorts_[port];
+    std::cout << "Connecting audio input port " << port << " (actual LV2 port " << actualPortIndex << ") to buffer " << (void*)buffer << std::endl;
+    lilv_instance_connect_port(instance_, actualPortIndex, buffer);
 }
 
 void PluginInstance::ConnectAudioOutput(uint32_t port, float* buffer) {
-    if (instance_) {
-        lilv_instance_connect_port(instance_, port, buffer);
+    if (!instance_) {
+        std::cerr << "Error: instance_ is NULL in ConnectAudioOutput" << std::endl;
+        return;
     }
+    
+    if (port >= audioOutputPorts_.size()) {
+        std::cerr << "Error: audio output port " << port << " out of range (size=" << audioOutputPorts_.size() << ")" << std::endl;
+        return;
+    }
+    
+    if (!buffer) {
+        std::cerr << "Error: NULL buffer passed to ConnectAudioOutput port " << port << std::endl;
+        return;
+    }
+    
+    uint32_t actualPortIndex = audioOutputPorts_[port];
+    std::cout << "Connecting audio output port " << port << " (actual LV2 port " << actualPortIndex << ") to buffer " << (void*)buffer << std::endl;
+    lilv_instance_connect_port(instance_, actualPortIndex, buffer);
 }
 
 void PluginInstance::ConnectControlInput(uint32_t port, float* value) {
-    if (instance_) {
-        lilv_instance_connect_port(instance_, port, value);
+    if (!instance_) {
+        std::cerr << "Error: instance_ is NULL in ConnectControlInput" << std::endl;
+        return;
     }
+    
+    if (port >= controlInputPorts_.size()) {
+        std::cerr << "Error: control input port " << port << " out of range (size=" << controlInputPorts_.size() << ")" << std::endl;
+        return;
+    }
+    
+    if (!value) {
+        std::cerr << "Error: NULL value passed to ConnectControlInput port " << port << std::endl;
+        return;
+    }
+    
+    uint32_t actualPortIndex = controlInputPorts_[port];
+    std::cout << "Connecting control input port " << port << " (actual LV2 port " << actualPortIndex << ") to value " << (void*)value << std::endl;
+    lilv_instance_connect_port(instance_, actualPortIndex, value);
 }
 
 void PluginInstance::ConnectControlOutput(uint32_t port, float* value) {
-    if (instance_) {
-        lilv_instance_connect_port(instance_, port, value);
+    if (!instance_) {
+        std::cerr << "Error: instance_ is NULL in ConnectControlOutput" << std::endl;
+        return;
     }
+    
+    if (port >= controlOutputPorts_.size()) {
+        std::cerr << "Error: control output port " << port << " out of range (size=" << controlOutputPorts_.size() << ")" << std::endl;
+        return;
+    }
+    
+    if (!value) {
+        std::cerr << "Error: NULL value passed to ConnectControlOutput port " << port << std::endl;
+        return;
+    }
+    
+    uint32_t actualPortIndex = controlOutputPorts_[port];
+    std::cout << "Connecting control output port " << port << " (actual LV2 port " << actualPortIndex << ") to dummy buffer " << (void*)value << std::endl;
+    lilv_instance_connect_port(instance_, actualPortIndex, value);
 }
 
 void PluginInstance::ConnectMidiInput(uint32_t port, LV2_Atom_Sequence* buffer) {
