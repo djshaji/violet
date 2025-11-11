@@ -61,7 +61,6 @@ ShowUnInstDetails show
 RequestExecutionLevel admin
 
 ; Compression
-SetCompressor /SOLID lzma
 
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR"
@@ -74,14 +73,13 @@ Section "MainSection" SEC01
   ; Documentation
   File /nonfatal "${DIST_DIR}\README.txt"
   File /nonfatal "${DIST_DIR}\LICENSE.txt"
-  File /nonfatal "${DIST_DIR}\CHANGELOG.txt"
   
   ; DLL dependencies (if any)
   File /nonfatal "${DIST_DIR}\*.dll"
   
   ; LV2 plugins directory (if bundled)
   SetOutPath "$INSTDIR\plugins"
-  File /nonfatal /r "${DIST_DIR}\plugins\*.lv2"
+  File /nonfatal /r "${DIST_DIR}\lv2\*.lv2"
   
   ; Create shortcuts
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
