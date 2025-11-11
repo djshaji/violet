@@ -14,6 +14,7 @@ class PluginParametersWindow;
 class PluginManager;
 class AudioEngine;
 class AudioProcessingChain;
+class SessionManager;
 
 class MainWindow {
 public:
@@ -59,6 +60,12 @@ private:
     void LoadPlugin(const std::string& pluginUri);
     void ShowPluginParameters(uint32_t nodeId);
     
+    // Session management
+    void OnNewSession();
+    void OnOpenSession();
+    void OnSaveSession();
+    void OnSaveSessionAs();
+    
     // Member variables
     HWND hwnd_;
     HWND hStatusBar_;
@@ -74,6 +81,7 @@ private:
     std::unique_ptr<PluginManager> pluginManager_;
     std::unique_ptr<AudioEngine> audioEngine_;
     std::unique_ptr<AudioProcessingChain> processingChain_;
+    std::unique_ptr<SessionManager> sessionManager_;
     
     // Window properties
     static const wchar_t* CLASS_NAME;

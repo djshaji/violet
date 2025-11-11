@@ -52,9 +52,17 @@ A lightweight LV2 plugin host for real-time audio processing on Windows.
 - ✅ View menu for easy theme switching
 - ✅ Dark mode title bar integration
 
+**Session Management**
+- ✅ Save sessions to .violet files
+- ✅ Load sessions with full plugin chain restoration
+- ✅ Parameter values preserved across sessions
+- ✅ Recent sessions tracking
+- ✅ File → New/Open/Save/Save As menu integration
+
 ### 🚧 In Progress
 
-- 🚧 Session save/load (infrastructure complete, needs UI)
+- 🚧 Audio file playback and recording
+- 🚧 User manual and comprehensive documentation
 
 ### 📋 Planned Features
 
@@ -120,17 +128,24 @@ ninja -C build
    - Click bypass button to enable/disable a plugin
    - Click remove button to remove a plugin
    - Click "Remove All Plugins" to clear the entire chain
-5. **Monitor Performance**: Check CPU usage and latency in the status bar
+5. **Save Your Work**:
+   - File → Save Session to save your current plugin chain
+   - File → Open Session to load a previously saved setup
+   - Sessions include all plugins and their parameter values
+6. **Monitor Performance**: Check CPU usage and latency in the status bar
 
 ## Project Status
 
-**Overall Completion**: ~82%
+**Overall Completion**: ~88%
 
 **Completed Phases**:
 - ✅ Phase 1: Core Infrastructure (100%)
 - ✅ Phase 2: Audio Engine Foundation (100%)
 - ✅ Phase 3: Plugin Management (100%)
-- 🔄 Phase 4: User Interface Implementation (98%)
+- ✅ Phase 4: User Interface Implementation (100%)
+- 🔄 Phase 5: Advanced Features (40%)
+
+**Current Focus**: Testing, documentation, and audio file I/O
 
 **Current Focus**: Enhancing UI with drag-and-drop and theme system
 

@@ -6,6 +6,7 @@
 #include "violet/audio_engine.h"
 #include "violet/audio_processing_chain.h"
 #include "violet/theme_manager.h"
+#include "violet/session_manager.h"
 #include "violet/utils.h"
 #include "violet/resource.h"
 #include <commctrl.h>
@@ -207,6 +208,9 @@ void MainWindow::OnCreate() {
         processingChain_->SetFormat(44100, 2, 256);
     }
     
+    // Initialize session manager
+    sessionManager_ = std::make_unique<SessionManager>();
+    
     // Create UI components
     CreateMenuBar();
     CreateToolBar();
@@ -258,6 +262,22 @@ void MainWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
     int wmId = LOWORD(wParam);
     
     switch (wmId) {
+    case IDM_NEW:
+        OnNewSession();
+        break;
+    
+    case IDM_OPEN:
+        OnOpenSession();
+        break;
+    
+    case IDM_SAVE:
+        OnSaveSession();
+        break;
+    
+    case IDM_SAVEAS:
+        OnSaveSessionAs();
+        break;
+    
     case IDM_EXIT:
         DestroyWindow(hwnd_);
         break;
@@ -478,6 +498,124 @@ void MainWindow::UpdateLayout() {
     if (activePluginsPanel_) {
         activePluginsPanel_->Resize(PLUGIN_BROWSER_WIDTH, availableTop,
                                    availableWidth - PLUGIN_BROWSER_WIDTH, availableHeight);
+    }
+}
+
+void MainWindow::OnNewSession() {
+    if (!sessionManager_) return;
+    
+    // TODO: Check for unsaved changes and prompt user
+    
+    // Clear current session
+    if (processingChain_) {
+        processingChain_->ClearChain();
+    }
+    
+    if (activePluginsPanel_) {
+        activePluginsPanel_->ClearPlugins();
+    }
+    
+    sessionManager_->NewSession();
+    
+    if (hStatusBar_) {
+        SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)L"New Session");
+    }
+}
+
+void MainWindow::OnOpenSession() {
+    if (!sessionManager_ || !processingChain_ || !pluginManager_) return;
+    
+    // Show file open dialog
+    wchar_t fileName[MAX_PATH] = L"";
+    
+    OPENFILENAME ofn = {};
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFilter = L"Violet Session Files (*.violet)\\0*.violet\\0All Files (*.*)\\0*.*\\0";
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    ofn.lpstrDefExt = L"violet";
+    ofn.lpstrTitle = L"Open Violet Session";
+    
+    if (GetOpenFileName(&ofn)) {
+        std::string filePath = utils::WStringToString(fileName);
+        
+        if (sessionManager_->LoadSession(filePath, processingChain_.get(), pluginManager_.get())) {
+            // Update UI
+            if (activePluginsPanel_) {
+                activePluginsPanel_->ClearPlugins();
+                
+                // Add loaded plugins to UI
+                auto nodeIds = processingChain_->GetNodeIds();
+                for (uint32_t nodeId : nodeIds) {
+                    auto node = processingChain_->GetNode(nodeId);
+                    if (node && node->GetPlugin()) {
+                        std::string name = node->GetPlugin()->GetInfo().name;
+                        std::string uri = node->GetPlugin()->GetInfo().uri;
+                        activePluginsPanel_->AddPlugin(nodeId, name, uri);
+                    }
+                }
+            }
+            
+            if (hStatusBar_) {
+                std::wstring msg = L"Loaded: " + utils::StringToWString(filePath);
+                SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)msg.c_str());
+            }
+        } else {
+            MessageBox(hwnd_, L"Failed to load session file", L"Error", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void MainWindow::OnSaveSession() {
+    if (!sessionManager_ || !processingChain_) return;
+    
+    std::string currentPath = sessionManager_->GetCurrentSessionPath();
+    
+    if (currentPath.empty()) {
+        // No current session, use Save As
+        OnSaveSessionAs();
+    } else {
+        // Save to current path
+        if (sessionManager_->SaveSession(currentPath, processingChain_.get())) {
+            if (hStatusBar_) {
+                std::wstring msg = L"Saved: " + utils::StringToWString(currentPath);
+                SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)msg.c_str());
+            }
+        } else {
+            MessageBox(hwnd_, L"Failed to save session file", L"Error", MB_OK | MB_ICONERROR);
+        }
+    }
+}
+
+void MainWindow::OnSaveSessionAs() {
+    if (!sessionManager_ || !processingChain_) return;
+    
+    // Show file save dialog
+    wchar_t fileName[MAX_PATH] = L"";
+    
+    OPENFILENAME ofn = {};
+    ofn.lStructSize = sizeof(OPENFILENAME);
+    ofn.hwndOwner = hwnd_;
+    ofn.lpstrFilter = L"Violet Session Files (*.violet)\\0*.violet\\0All Files (*.*)\\0*.*\\0";
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+    ofn.lpstrDefExt = L"violet";
+    ofn.lpstrTitle = L"Save Violet Session As";
+    
+    if (GetSaveFileName(&ofn)) {
+        std::string filePath = utils::WStringToString(fileName);
+        
+        if (sessionManager_->SaveSession(filePath, processingChain_.get())) {
+            if (hStatusBar_) {
+                std::wstring msg = L"Saved: " + utils::StringToWString(filePath);
+                SendMessage(hStatusBar_, SB_SETTEXT, 0, (LPARAM)msg.c_str());
+            }
+        } else {
+            MessageBox(hwnd_, L"Failed to save session file", L"Error", MB_OK | MB_ICONERROR);
+        }
     }
 }
 
