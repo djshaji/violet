@@ -10,6 +10,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include <cmath>
 
 namespace violet {
 
@@ -470,11 +471,53 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
         return false;
     }
     
-    // Set up format
-    if (!SetupFormat(*client, currentFormat_)) {
-        (*client)->Release();
-        *client = nullptr;
-        return false;
+    // For input devices, use the device's native mix format
+    // For output devices, use our preferred format
+    if (isInput) {
+        // Get the device's preferred format
+        WAVEFORMATEX* mixFormat = nullptr;
+        hr = (*client)->GetMixFormat(&mixFormat);
+        if (FAILED(hr)) {
+            std::cerr << "Failed to get mix format for input device: 0x" << std::hex << hr << std::endl;
+            (*client)->Release();
+            *client = nullptr;
+            return false;
+        }
+        
+        std::cout << "Input device native format: "
+                  << mixFormat->nSamplesPerSec << " Hz, "
+                  << mixFormat->nChannels << " channels, "
+                  << mixFormat->wBitsPerSample << " bits" << std::endl;
+        
+        // Initialize without event callback for input (Wine compatibility)
+        // Use polling mode instead
+        hr = (*client)->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            0,  // No flags - use polling mode for input
+            10000000,  // 1 second buffer
+            0,
+            mixFormat,
+            nullptr
+        );
+        
+        CoTaskMemFree(mixFormat);
+        
+        if (FAILED(hr)) {
+            std::cerr << "Failed to initialize input audio client: 0x" << std::hex << hr << std::endl;
+            (*client)->Release();
+            *client = nullptr;
+            return false;
+        }
+        
+        // Don't set event handle for input - we're using polling mode
+        std::cout << "Input audio client initialized successfully (polling mode)" << std::endl;
+    } else {
+        // Set up format for output using our preferred format
+        if (!SetupFormat(*client, currentFormat_)) {
+            (*client)->Release();
+            *client = nullptr;
+            return false;
+        }
     }
     
     // Get render/capture client
@@ -617,6 +660,12 @@ void AudioEngine::AudioThreadProc() {
         
         // Process audio
         if (renderClient_ && audioCallback_) {
+            static bool firstCallback = true;
+            if (firstCallback) {
+                std::cout << "Audio processing callbacks started" << std::endl;
+                firstCallback = false;
+            }
+            
             UINT32 bufferFrameCount;
             if (SUCCEEDED(outputClient_->GetBufferSize(&bufferFrameCount))) {
                 UINT32 numFramesPadding;
@@ -668,9 +717,30 @@ void AudioEngine::AudioThreadProc() {
                                 }
                             }
                             
-                            // If no input captured, fill with silence
+                            // If no input captured, generate test tone (440 Hz sine wave) for testing
+                            // This allows testing the plugin chain even when microphone capture fails
                             if (!capturedInput) {
-                                std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
+                                static double phase = 0.0;
+                                const double frequency = 440.0;  // A4 note
+                                const double amplitude = 0.2;     // 20% volume to avoid clipping
+                                const double phaseIncrement = 2.0 * 3.14159265358979323846 * frequency / currentFormat_.sampleRate;
+                                
+                                for (UINT32 i = 0; i < numFramesAvailable; ++i) {
+                                    float sample = static_cast<float>(amplitude * sin(phase));
+                                    inputBuffer_[i * currentFormat_.channels] = sample;      // Left channel
+                                    inputBuffer_[i * currentFormat_.channels + 1] = sample;  // Right channel
+                                    phase += phaseIncrement;
+                                    if (phase >= 2.0 * 3.14159265358979323846) {
+                                        phase -= 2.0 * 3.14159265358979323846;
+                                    }
+                                }
+                                
+                                // Log once that we're using test tone
+                                static bool logged = false;
+                                if (!logged) {
+                                    std::cout << "INFO: Microphone capture not available, using test tone (440 Hz) as input" << std::endl;
+                                    logged = true;
+                                }
                             }
                             
                             // Call user callback to process audio
