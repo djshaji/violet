@@ -84,7 +84,7 @@ private:
     // WASAPI implementation
     bool InitializeWASAPI();
     void ShutdownWASAPI();
-    bool CreateAudioClient(bool isInput);
+    bool CreateAudioClient(bool isInput, AudioFormat* actualFormat = nullptr);
     void AudioThreadProc();
     
     // Device helpers
@@ -113,7 +113,9 @@ private:
     HANDLE audioEvent_;
     
     // Configuration
-    AudioFormat currentFormat_;
+    AudioFormat currentFormat_;        // Requested format
+    AudioFormat actualInputFormat_;    // Actual input device format
+    AudioFormat actualOutputFormat_;   // Actual output device format
     std::string currentInputDeviceId_;
     std::string currentOutputDeviceId_;
     

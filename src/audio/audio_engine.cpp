@@ -393,26 +393,41 @@ bool AudioEngine::Start() {
         }
     }
     
-    // Create audio clients
+    // Create input client first to get its native format
+    if (!currentInputDeviceId_.empty()) {
+        std::cout << "Creating audio client for input device: " << currentInputDeviceId_ << std::endl;
+        if (CreateAudioClient(true, &actualInputFormat_)) { // Input
+            std::cout << "Input initialized: " << actualInputFormat_.sampleRate << " Hz, "
+                      << actualInputFormat_.channels << " channels, "
+                      << actualInputFormat_.bitsPerSample << " bits" << std::endl;
+            
+            // Use input device's format for output to avoid resampling
+            currentFormat_ = actualInputFormat_;
+        } else {
+            std::cerr << "Warning: Failed to create input audio client, continuing without audio input" << std::endl;
+        }
+    }
+    
+    // Create audio client for output device using same format as input
     std::cout << "Creating audio client for output device: " << currentOutputDeviceId_ << std::endl;
-    if (!CreateAudioClient(false)) { // Output
+    if (!CreateAudioClient(false, &actualOutputFormat_)) { // Output
         std::cerr << "Failed to create audio client. Cannot start audio engine." << std::endl;
         return false;
     }
     
-    // Create input client if input device is available
-    if (!currentInputDeviceId_.empty()) {
-        std::cout << "Creating audio client for input device: " << currentInputDeviceId_ << std::endl;
-        if (!CreateAudioClient(true)) { // Input
-            std::cerr << "Warning: Failed to create input audio client, continuing without audio input" << std::endl;
-            // Don't fail - we can still output audio
-        }
-    }
+    std::cout << "Output initialized: " << actualOutputFormat_.sampleRate << " Hz, "
+              << actualOutputFormat_.channels << " channels, "
+              << actualOutputFormat_.bitsPerSample << " bits" << std::endl;
     
     std::cout << "Audio engine starting with:" << std::endl;
-    std::cout << "  Sample rate: " << currentFormat_.sampleRate << " Hz" << std::endl;
-    std::cout << "  Channels: " << currentFormat_.channels << std::endl;
-    std::cout << "  Bit depth: " << currentFormat_.bitsPerSample << " bits" << std::endl;
+    if (actualInputFormat_.sampleRate > 0) {
+        std::cout << "  Input:  " << actualInputFormat_.sampleRate << " Hz, "
+                  << actualInputFormat_.channels << " ch, "
+                  << actualInputFormat_.bitsPerSample << " bits" << std::endl;
+    }
+    std::cout << "  Output: " << actualOutputFormat_.sampleRate << " Hz, "
+              << actualOutputFormat_.channels << " ch, "
+              << actualOutputFormat_.bitsPerSample << " bits" << std::endl;
     std::cout << "  Buffer size: " << currentFormat_.bufferSize << " samples" << std::endl;
     
     // Start audio thread
@@ -448,7 +463,7 @@ bool AudioEngine::IsRunning() const {
     return isRunning_.load();
 }
 
-bool AudioEngine::CreateAudioClient(bool isInput) {
+bool AudioEngine::CreateAudioClient(bool isInput, AudioFormat* actualFormat) {
     IMMDevice* device = isInput ? inputDevice_ : outputDevice_;
     IAudioClient** client = isInput ? &inputClient_ : &outputClient_;
     
@@ -471,8 +486,125 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
         return false;
     }
     
-    // For input devices, use the device's native mix format
-    // For output devices, use our preferred format
+    // Get the device's native mix format (for both input and output)
+    WAVEFORMATEX* mixFormat = nullptr;
+    hr = (*client)->GetMixFormat(&mixFormat);
+    if (FAILED(hr)) {
+        std::cerr << "Failed to get mix format for " << (isInput ? "input" : "output") << " device: 0x" << std::hex << hr << std::endl;
+        (*client)->Release();
+        *client = nullptr;
+        return false;
+    }
+    
+    std::cout << (isInput ? "Input" : "Output") << " device native format: "
+              << mixFormat->nSamplesPerSec << " Hz, "
+              << mixFormat->nChannels << " channels, "
+              << mixFormat->wBitsPerSample << " bits" << std::endl;
+    
+    // For output: if input format is already set, try to use matching format
+    // Otherwise use device's native format
+    if (!isInput && actualInputFormat_.sampleRate > 0) {
+        std::cout << "Attempting to match output format to input: "
+                  << actualInputFormat_.sampleRate << " Hz" << std::endl;
+        
+        // Create format matching input
+        WAVEFORMATEXTENSIBLE* desiredFormat = (WAVEFORMATEXTENSIBLE*)CoTaskMemAlloc(sizeof(WAVEFORMATEXTENSIBLE));
+        memcpy(desiredFormat, mixFormat, sizeof(WAVEFORMATEXTENSIBLE));
+        desiredFormat->Format.nSamplesPerSec = actualInputFormat_.sampleRate;
+        desiredFormat->Format.nAvgBytesPerSec = actualInputFormat_.sampleRate * desiredFormat->Format.nBlockAlign;
+        
+        // Check if this format is supported
+        WAVEFORMATEX* closestMatch = nullptr;
+        hr = (*client)->IsFormatSupported(AUDCLNT_SHAREMODE_SHARED, (WAVEFORMATEX*)desiredFormat, &closestMatch);
+        
+        if (hr == S_OK) {
+            // Exact match supported - use it
+            CoTaskMemFree(mixFormat);
+            mixFormat = (WAVEFORMATEX*)desiredFormat;
+            std::cout << "Output device supports input sample rate" << std::endl;
+        } else if (hr == S_FALSE && closestMatch) {
+            // Close match available
+            std::cout << "Using closest match: " << closestMatch->nSamplesPerSec << " Hz" << std::endl;
+            CoTaskMemFree(mixFormat);
+            CoTaskMemFree(desiredFormat);
+            mixFormat = closestMatch;
+        } else {
+            // Not supported, use device default
+            std::cout << "Output device doesn't support input sample rate, using native format" << std::endl;
+            CoTaskMemFree(desiredFormat);
+        }
+    }
+    
+    // Store the actual format being used
+    if (actualFormat) {
+        actualFormat->sampleRate = mixFormat->nSamplesPerSec;
+        actualFormat->channels = mixFormat->nChannels;
+        actualFormat->bitsPerSample = mixFormat->wBitsPerSample;
+        actualFormat->bufferSize = currentFormat_.bufferSize; // Keep requested buffer size
+    }
+    
+    // Calculate buffer duration - use 10ms for low latency
+    REFERENCE_TIME bufferDuration = 100000;  // 10ms
+    
+    // Try event callback mode first (for Windows), fall back to polling if it fails
+    hr = (*client)->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+        bufferDuration,
+        0,
+        mixFormat,
+        nullptr
+    );
+    
+    bool useEventCallback = SUCCEEDED(hr);
+    
+    if (FAILED(hr)) {
+        std::cout << "Event callback mode failed for " << (isInput ? "input" : "output") << ", trying polling mode" << std::endl;
+        // Release and recreate client
+        (*client)->Release();
+        hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client);
+        if (FAILED(hr)) {
+            std::cerr << "Failed to reactivate audio client: 0x" << std::hex << hr << std::endl;
+            CoTaskMemFree(mixFormat);
+            *client = nullptr;
+            return false;
+        }
+        
+        // Get mix format again
+        WAVEFORMATEX* mixFormat2 = nullptr;
+        hr = (*client)->GetMixFormat(&mixFormat2);
+        if (SUCCEEDED(hr)) {
+            CoTaskMemFree(mixFormat);
+            mixFormat = mixFormat2;
+        }
+        
+        // Try without event callback (polling mode)
+        hr = (*client)->Initialize(
+            AUDCLNT_SHAREMODE_SHARED,
+            0,  // No event callback
+            bufferDuration,
+            0,
+            mixFormat,
+            nullptr
+        );
+    }
+    
+    CoTaskMemFree(mixFormat);
+    
+    if (FAILED(hr)) {
+        std::cerr << "Failed to initialize " << (isInput ? "input" : "output") << " audio client: 0x" << std::hex << hr << std::endl;
+        if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
+            std::cerr << "  Format not supported" << std::endl;
+        } else if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+            std::cerr << "  Buffer size not aligned" << std::endl;
+        } else if (hr == AUDCLNT_E_DEVICE_IN_USE) {
+            std::cerr << "  Device already in use" << std::endl;
+        }
+        (*client)->Release();
+        *client = nullptr;
+        return false;
+    }
+    
     if (isInput) {
         // Get the device's preferred format
         WAVEFORMATEX* mixFormat = nullptr;
@@ -489,53 +621,117 @@ bool AudioEngine::CreateAudioClient(bool isInput) {
                   << mixFormat->nChannels << " channels, "
                   << mixFormat->wBitsPerSample << " bits" << std::endl;
         
-        // Initialize without event callback for input (Wine compatibility)
-        // Use polling mode instead
+        // Calculate buffer duration - use same duration as output for better sync
+        // Default to 10ms (100000 hundred-nanosecond units)
+        REFERENCE_TIME bufferDuration = 100000;  // 10ms
+        
+        // Try event callback mode first (for Windows), fall back to polling if it fails
         hr = (*client)->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
-            0,  // No flags - use polling mode for input
-            10000000,  // 1 second buffer
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+            bufferDuration,
             0,
             mixFormat,
             nullptr
         );
         
+        bool useEventCallback = SUCCEEDED(hr);
+        
+        if (FAILED(hr)) {
+            std::cout << "Event callback mode failed, trying polling mode for input" << std::endl;
+            // Release and recreate client
+            (*client)->Release();
+            hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, (void**)client);
+            if (FAILED(hr)) {
+                std::cerr << "Failed to reactivate audio client for input: 0x" << std::hex << hr << std::endl;
+                CoTaskMemFree(mixFormat);
+                *client = nullptr;
+                return false;
+            }
+            
+            // Get mix format again
+            WAVEFORMATEX* mixFormat2 = nullptr;
+            hr = (*client)->GetMixFormat(&mixFormat2);
+            if (SUCCEEDED(hr)) {
+                CoTaskMemFree(mixFormat);
+                mixFormat = mixFormat2;
+            }
+            
+            // Try without event callback (polling mode)
+            hr = (*client)->Initialize(
+                AUDCLNT_SHAREMODE_SHARED,
+                0,  // No event callback
+                bufferDuration,
+                0,
+                mixFormat,
+                nullptr
+            );
+        }
+        
         CoTaskMemFree(mixFormat);
         
         if (FAILED(hr)) {
             std::cerr << "Failed to initialize input audio client: 0x" << std::hex << hr << std::endl;
+            if (hr == AUDCLNT_E_UNSUPPORTED_FORMAT) {
+                std::cerr << "  Format not supported" << std::endl;
+            } else if (hr == AUDCLNT_E_BUFFER_SIZE_NOT_ALIGNED) {
+                std::cerr << "  Buffer size not aligned" << std::endl;
+            } else if (hr == AUDCLNT_E_DEVICE_IN_USE) {
+                std::cerr << "  Device already in use" << std::endl;
+            }
             (*client)->Release();
             *client = nullptr;
             return false;
         }
         
-        // Don't set event handle for input - we're using polling mode
-        std::cout << "Input audio client initialized successfully (polling mode)" << std::endl;
-    } else {
-        // Set up format for output using our preferred format
-        if (!SetupFormat(*client, currentFormat_)) {
-            (*client)->Release();
-            *client = nullptr;
-            return false;
-        }
-    }
-    
-    // Get render/capture client
-    if (!isInput) {
-        hr = (*client)->GetService(__uuidof(IAudioRenderClient), (void**)&renderClient_);
-        if (FAILED(hr)) {
-            std::cerr << "Failed to get render client: 0x" << std::hex << hr << std::endl;
-            return false;
-        }
-        
-        // Get volume control
-        hr = (*client)->GetService(__uuidof(ISimpleAudioVolume), (void**)&volumeControl_);
-        // Volume control is optional, don't fail if not available
-    } else {
+        // Get capture client
         hr = (*client)->GetService(__uuidof(IAudioCaptureClient), (void**)&captureClient_);
         if (FAILED(hr)) {
             std::cerr << "Failed to get capture client: 0x" << std::hex << hr << std::endl;
+            (*client)->Release();
+            *client = nullptr;
             return false;
+        }
+        
+        // Set event handle if using event callback mode
+        if (useEventCallback) {
+            hr = (*client)->SetEventHandle(audioEvent_);
+            if (FAILED(hr)) {
+                std::cerr << "Failed to set event handle for input: 0x" << std::hex << hr << std::endl;
+                (*client)->Release();
+                *client = nullptr;
+                return false;
+            }
+            std::cout << "Input audio client initialized (event callback mode)" << std::endl;
+        } else {
+            std::cout << "Input audio client initialized (polling mode)" << std::endl;
+        }
+    } else {
+        // Output device
+        hr = (*client)->GetService(__uuidof(IAudioRenderClient), (void**)&renderClient_);
+        if (FAILED(hr)) {
+            std::cerr << "Failed to get render client: 0x" << std::hex << hr << std::endl;
+            (*client)->Release();
+            *client = nullptr;
+            return false;
+        }
+        
+        // Get volume control (optional)
+        hr = (*client)->GetService(__uuidof(ISimpleAudioVolume), (void**)&volumeControl_);
+        // Volume control is optional, don't fail if not available
+        
+        // Set event handle if using event callback mode
+        if (useEventCallback) {
+            hr = (*client)->SetEventHandle(audioEvent_);
+            if (FAILED(hr)) {
+                std::cerr << "Failed to set event handle for output: 0x" << std::hex << hr << std::endl;
+                (*client)->Release();
+                *client = nullptr;
+                return false;
+            }
+            std::cout << "Output audio client initialized (event callback mode)" << std::endl;
+        } else {
+            std::cout << "Output audio client initialized (polling mode)" << std::endl;
         }
     }
     
