@@ -146,7 +146,7 @@ void PluginInstance::InitializePorts() {
                 
                 std::cout << "    Name: " << paramInfo.name << ", Symbol: " << paramInfo.symbol << std::endl;
                 
-                // Get default, min, max values
+                // Get default, min, max values from TTL file
                 LilvNode* defaultNode = nullptr;
                 LilvNode* minNode = nullptr;
                 LilvNode* maxNode = nullptr;
@@ -156,6 +156,10 @@ void PluginInstance::InitializePorts() {
                 paramInfo.defaultValue = defaultNode ? lilv_node_as_float(defaultNode) : 0.0f;
                 paramInfo.minimum = minNode ? lilv_node_as_float(minNode) : 0.0f;
                 paramInfo.maximum = maxNode ? lilv_node_as_float(maxNode) : 1.0f;
+                
+                std::cout << "    Range: min=" << paramInfo.minimum 
+                          << ", max=" << paramInfo.maximum 
+                          << ", default=" << paramInfo.defaultValue << std::endl;
                 
                 if (defaultNode) lilv_node_free(defaultNode);
                 if (minNode) lilv_node_free(minNode);
