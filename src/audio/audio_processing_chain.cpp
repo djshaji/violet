@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <cmath>
 
 namespace violet {
 
@@ -229,6 +230,34 @@ void ProcessingNode::ProcessAutomation(uint32_t currentSample, uint32_t frames) 
                           return point.sampleTime < currentSample + frames;
                       }),
         automationPoints_.end());
+}
+
+void ProcessingNode::SetParameter(uint32_t parameterIndex, float value) {
+    if (parameterIndex < controlValues_.size()) {
+        // Validate parameter range if plugin instance has parameter info
+        if (plugin_) {
+            auto parameters = plugin_->GetParameters();
+            for (const auto& param : parameters) {
+                if (param.index == parameterIndex) {
+                    value = std::max(param.minimum, std::min(param.maximum, value));
+                    if (param.isInteger) {
+                        value = round(value);
+                    }
+                    break;
+                }
+            }
+        }
+        
+        controlValues_[parameterIndex] = value;
+        parameterChanged_[parameterIndex] = true;
+    }
+}
+
+float ProcessingNode::GetParameter(uint32_t parameterIndex) const {
+    if (parameterIndex < controlValues_.size()) {
+        return controlValues_[parameterIndex];
+    }
+    return 0.0f;
 }
 
 void ProcessingNode::AddAutomationPoint(const AutomationPoint& point) {
@@ -480,8 +509,8 @@ void AudioProcessingChain::ProcessMidi(MidiBuffer* midiBuffer, uint32_t frames) 
 
 bool AudioProcessingChain::SetParameter(uint32_t nodeId, uint32_t parameterIndex, float value) {
     ProcessingNode* node = GetNode(nodeId);
-    if (node && node->GetPlugin()) {
-        node->GetPlugin()->SetParameter(parameterIndex, value);
+    if (node) {
+        node->SetParameter(parameterIndex, value);
         return true;
     }
     return false;
@@ -489,8 +518,8 @@ bool AudioProcessingChain::SetParameter(uint32_t nodeId, uint32_t parameterIndex
 
 float AudioProcessingChain::GetParameter(uint32_t nodeId, uint32_t parameterIndex) const {
     const ProcessingNode* node = GetNode(nodeId);
-    if (node && node->GetPlugin()) {
-        return node->GetPlugin()->GetParameter(parameterIndex);
+    if (node) {
+        return node->GetParameter(parameterIndex);
     }
     return 0.0f;
 }

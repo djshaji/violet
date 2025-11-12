@@ -111,6 +111,8 @@ private:
     std::atomic<bool> isRunning_;
     std::atomic<bool> shouldStop_;
     HANDLE audioEvent_;
+    bool inputEventCallbackMode_;
+    bool outputEventCallbackMode_;
     
     // Configuration
     AudioFormat currentFormat_;        // Requested format

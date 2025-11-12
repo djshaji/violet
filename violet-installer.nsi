@@ -78,7 +78,7 @@ Section "MainSection" SEC01
   File /nonfatal "${DIST_DIR}\*.dll"
   
   ; LV2 plugins directory (if bundled)
-  SetOutPath "$INSTDIR\plugins"
+  SetOutPath "$INSTDIR\lv2"
   File /nonfatal /r "${DIST_DIR}\lv2\*.lv2"
   
   ; Create shortcuts
@@ -108,7 +108,7 @@ Section -Post
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
   
   ; Set LV2_PATH environment variable (optional, user can override)
-  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "LV2_PATH" "$INSTDIR\plugins"
+  WriteRegExpandStr HKLM "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "LV2_PATH" "$INSTDIR\lv2"
   
   ; Notify system of environment variable change
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
@@ -132,7 +132,7 @@ Section Uninstall
   Delete "$INSTDIR\*.dll"
   
   ; Remove plugins directory
-  RMDir /r "$INSTDIR\plugins"
+  RMDir /r "$INSTDIR\lv2"
   
   ; Remove configuration (ask user)
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to remove configuration files and user data?" IDNO +3

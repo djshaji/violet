@@ -30,6 +30,8 @@ AudioEngine::AudioEngine()
     , isRunning_(false)
     , shouldStop_(false)
     , audioEvent_(nullptr)
+    , inputEventCallbackMode_(false)
+    , outputEventCallbackMode_(false)
     , audioCallback_(nullptr)
     , callbackUserData_(nullptr)
     , cpuUsage_(0.0)
@@ -122,11 +124,13 @@ void AudioEngine::ShutdownWASAPI() {
     if (inputClient_) {
         inputClient_->Release();
         inputClient_ = nullptr;
+        inputEventCallbackMode_ = false;
     }
     
     if (outputClient_) {
         outputClient_->Release();
         outputClient_ = nullptr;
+        outputEventCallbackMode_ = false;
     }
     
     if (inputDevice_) {
@@ -401,8 +405,9 @@ bool AudioEngine::Start() {
                       << actualInputFormat_.channels << " channels, "
                       << actualInputFormat_.bitsPerSample << " bits" << std::endl;
             
-            // Use input device's format for output to avoid resampling
+            // Use input device's format for processing chain, but check compatibility with output
             currentFormat_ = actualInputFormat_;
+            std::cout << "Input format will be used for processing chain" << std::endl;
         } else {
             std::cerr << "Warning: Failed to create input audio client, continuing without audio input" << std::endl;
         }
@@ -429,6 +434,13 @@ bool AudioEngine::Start() {
               << actualOutputFormat_.channels << " ch, "
               << actualOutputFormat_.bitsPerSample << " bits" << std::endl;
     std::cout << "  Buffer size: " << currentFormat_.bufferSize << " samples" << std::endl;
+    
+    // Handle sample rate mismatch by using output format as the common format
+    if (actualInputFormat_.sampleRate != actualOutputFormat_.sampleRate) {
+        std::cout << "Sample rate mismatch detected. Using output format (" 
+                  << actualOutputFormat_.sampleRate << " Hz) for processing" << std::endl;
+        currentFormat_ = actualOutputFormat_;
+    }
     
     // Start audio thread
     shouldStop_.store(false);
@@ -702,8 +714,10 @@ bool AudioEngine::CreateAudioClient(bool isInput, AudioFormat* actualFormat) {
                 *client = nullptr;
                 return false;
             }
+            inputEventCallbackMode_ = true;
             std::cout << "Input audio client initialized (event callback mode)" << std::endl;
         } else {
+            inputEventCallbackMode_ = false;
             std::cout << "Input audio client initialized (polling mode)" << std::endl;
         }
     } else {
@@ -729,8 +743,10 @@ bool AudioEngine::CreateAudioClient(bool isInput, AudioFormat* actualFormat) {
                 *client = nullptr;
                 return false;
             }
+            outputEventCallbackMode_ = true;
             std::cout << "Output audio client initialized (event callback mode)" << std::endl;
         } else {
+            outputEventCallbackMode_ = false;
             std::cout << "Output audio client initialized (polling mode)" << std::endl;
         }
     }
@@ -839,15 +855,21 @@ void AudioEngine::AudioThreadProc() {
     auto startTime = std::chrono::high_resolution_clock::now();
     
     while (!shouldStop_.load()) {
-        // Wait for audio event
-        DWORD waitResult = WaitForSingleObject(audioEvent_, 1000); // 1 second timeout
-        
-        if (waitResult != WAIT_OBJECT_0) {
-            if (waitResult == WAIT_TIMEOUT) {
-                continue;
-            } else {
-                break; // Error occurred
+        // Handle different modes: event callback vs polling
+        if (outputEventCallbackMode_) {
+            // Event callback mode: wait for audio event
+            DWORD waitResult = WaitForSingleObject(audioEvent_, 1000); // 1 second timeout
+            
+            if (waitResult != WAIT_OBJECT_0) {
+                if (waitResult == WAIT_TIMEOUT) {
+                    continue;
+                } else {
+                    break; // Error occurred
+                }
             }
+        } else {
+            // Polling mode: sleep for a short period and check buffers
+            Sleep(5); // 5ms sleep for polling mode
         }
         
         if (shouldStop_.load()) {
@@ -879,12 +901,17 @@ void AudioEngine::AudioThreadProc() {
                             bool capturedInput = false;
                             if (captureClient_) {
                                 UINT32 packetLength = 0;
-                                if (SUCCEEDED(captureClient_->GetNextPacketSize(&packetLength)) && packetLength > 0) {
+                                HRESULT hr = captureClient_->GetNextPacketSize(&packetLength);
+                                
+                                // Check for available packets (polling mode)
+                                if (SUCCEEDED(hr) && packetLength > 0) {
                                     BYTE* inputData;
                                     UINT32 framesAvailable;
                                     DWORD flags;
                                     
-                                    if (SUCCEEDED(captureClient_->GetBuffer(&inputData, &framesAvailable, &flags, nullptr, nullptr))) {
+                                    HRESULT captureHr = captureClient_->GetBuffer(&inputData, &framesAvailable, &flags, nullptr, nullptr);
+                                    
+                                    if (SUCCEEDED(captureHr) && framesAvailable > 0) {
                                         // Copy captured audio to input buffer
                                         UINT32 framesToCopy = std::min(framesAvailable, numFramesAvailable);
                                         
@@ -893,8 +920,8 @@ void AudioEngine::AudioThreadProc() {
                                             std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
                                         } else {
                                             // Copy audio data (assuming 32-bit float format)
-                                            if (currentFormat_.bitsPerSample == 32) {
-                                                memcpy(inputBuffer_.data(), inputData, framesToCopy * currentFormat_.channels * sizeof(float));
+                                            if (actualInputFormat_.bitsPerSample == 32) {
+                                                memcpy(inputBuffer_.data(), inputData, framesToCopy * actualInputFormat_.channels * sizeof(float));
                                             } else {
                                                 // TODO: Implement conversion from other formats
                                                 std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
@@ -902,13 +929,20 @@ void AudioEngine::AudioThreadProc() {
                                             
                                             // If captured frames < needed frames, zero the rest
                                             if (framesToCopy < numFramesAvailable) {
-                                                std::fill(inputBuffer_.begin() + (framesToCopy * currentFormat_.channels),
+                                                std::fill(inputBuffer_.begin() + (framesToCopy * actualInputFormat_.channels),
                                                          inputBuffer_.end(), 0.0f);
                                             }
                                         }
                                         
                                         captureClient_->ReleaseBuffer(framesAvailable);
                                         capturedInput = true;
+                                        
+                                        // Log successful captures occasionally
+                                        static int successCount = 0;
+                                        successCount++;
+                                        if (successCount == 1) {
+                                            std::cout << "SUCCESS: Microphone input is working in polling mode" << std::endl;
+                                        }
                                     }
                                 }
                             }
@@ -919,7 +953,7 @@ void AudioEngine::AudioThreadProc() {
                                 static double phase = 0.0;
                                 const double frequency = 440.0;  // A4 note
                                 const double amplitude = 0.2;     // 20% volume to avoid clipping
-                                const double phaseIncrement = 2.0 * 3.14159265358979323846 * frequency / currentFormat_.sampleRate;
+                                const double phaseIncrement = 2.0 * 3.14159265358979323846 * frequency / actualOutputFormat_.sampleRate;
                                 
                                 for (UINT32 i = 0; i < numFramesAvailable; ++i) {
                                     float sample = static_cast<float>(amplitude * sin(phase));
@@ -931,11 +965,11 @@ void AudioEngine::AudioThreadProc() {
                                     }
                                 }
                                 
-                                // Log once that we're using test tone
-                                static bool logged = false;
-                                if (!logged) {
-                                    std::cout << "INFO: Microphone capture not available, using test tone (440 Hz) as input" << std::endl;
-                                    logged = true;
+                                // Log test tone usage (reduced frequency)
+                                static int testToneCounter = 0;
+                                testToneCounter++;
+                                if (testToneCounter == 1) {
+                                    std::cout << "INFO: Using test tone (440 Hz) when microphone data not available" << std::endl;
                                 }
                             }
                             

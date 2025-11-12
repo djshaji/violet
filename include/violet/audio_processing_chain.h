@@ -43,6 +43,10 @@ public:
     std::vector<uint32_t> GetInputChannels() const { return inputChannels_; }
     std::vector<uint32_t> GetOutputChannels() const { return outputChannels_; }
     
+    // Parameter control
+    void SetParameter(uint32_t parameterIndex, float value);
+    float GetParameter(uint32_t parameterIndex) const;
+    
     // Parameter automation
     struct AutomationPoint {
         uint32_t sampleTime;

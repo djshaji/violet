@@ -229,7 +229,7 @@ void MainWindow::OnCreate() {
     
     processingChain_ = std::make_unique<AudioProcessingChain>(audioEngine_.get());
     if (processingChain_) {
-        // Set default format
+            // Set format to match audio engine - will be updated when audio starts
         processingChain_->SetFormat(44100, 2, 256);
     }
     
@@ -318,6 +318,11 @@ void MainWindow::OnCreate() {
         
         // Start audio engine automatically
         if (audioEngine_->Start()) {
+            // Update processing chain with actual audio format
+            AudioFormat actualFormat = audioEngine_->GetFormat();
+            processingChain_->SetFormat(actualFormat.sampleRate, actualFormat.channels, actualFormat.bufferSize);
+            std::cout << "Updated processing chain to use " << actualFormat.sampleRate << " Hz" << std::endl;
+            
             if (hStatusBar_) {
                 SendMessage(hStatusBar_, SB_SETTEXT, 1, (LPARAM)L"Audio: Running");
             }
