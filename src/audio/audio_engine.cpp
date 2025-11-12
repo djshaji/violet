@@ -947,29 +947,16 @@ void AudioEngine::AudioThreadProc() {
                                 }
                             }
                             
-                            // If no input captured, generate test tone (440 Hz sine wave) for testing
-                            // This allows testing the plugin chain even when microphone capture fails
+                            // If no input captured, use silence instead of test tone
                             if (!capturedInput) {
-                                static double phase = 0.0;
-                                const double frequency = 440.0;  // A4 note
-                                const double amplitude = 0.2;     // 20% volume to avoid clipping
-                                const double phaseIncrement = 2.0 * 3.14159265358979323846 * frequency / actualOutputFormat_.sampleRate;
+                                // Fill input buffer with silence
+                                std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
                                 
-                                for (UINT32 i = 0; i < numFramesAvailable; ++i) {
-                                    float sample = static_cast<float>(amplitude * sin(phase));
-                                    inputBuffer_[i * currentFormat_.channels] = sample;      // Left channel
-                                    inputBuffer_[i * currentFormat_.channels + 1] = sample;  // Right channel
-                                    phase += phaseIncrement;
-                                    if (phase >= 2.0 * 3.14159265358979323846) {
-                                        phase -= 2.0 * 3.14159265358979323846;
-                                    }
-                                }
-                                
-                                // Log test tone usage (reduced frequency)
-                                static int testToneCounter = 0;
-                                testToneCounter++;
-                                if (testToneCounter == 1) {
-                                    std::cout << "INFO: Using test tone (440 Hz) when microphone data not available" << std::endl;
+                                // Log silence usage (reduced frequency)
+                                static int silenceCounter = 0;
+                                silenceCounter++;
+                                if (silenceCounter == 1) {
+                                    std::cout << "INFO: Using silence when microphone data not available" << std::endl;
                                 }
                             }
                             

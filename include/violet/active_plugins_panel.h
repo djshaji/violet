@@ -152,7 +152,11 @@ private:
     
     // Update timer
     static const int TIMER_ID_UPDATE = 2;
+    static const int TIMER_ID_INTERACTION = 3;
     static const int UPDATE_INTERVAL_MS = 100;
+    
+    // User interaction state
+    bool userIsInteracting_;
     
     // Window class
     static const wchar_t* CLASS_NAME;

@@ -20,7 +20,8 @@ ActivePluginsPanel::ActivePluginsPanel()
     , selectedNodeId_(0)
     , hoveredPluginIndex_(-1)
     , scrollPos_(0)
-    , maxScrollPos_(0) {
+    , maxScrollPos_(0)
+    , userIsInteracting_(false) {
 }
 
 ActivePluginsPanel::~ActivePluginsPanel() {
@@ -375,6 +376,9 @@ void ActivePluginsPanel::OnSliderChange(HWND slider) {
     uint32_t nodeId = it->second.first;
     uint32_t paramIndex = it->second.second;
     
+    // Set interaction flag to prevent timer interference
+    userIsInteracting_ = true;
+    
     // Find the plugin and parameter info
     for (auto& plugin : plugins_) {
         if (plugin.nodeId == nodeId) {
@@ -391,6 +395,9 @@ void ActivePluginsPanel::OnSliderChange(HWND slider) {
                     std::wstringstream ss;
                     ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
                     SetWindowText(control.valueStatic, ss.str().c_str());
+                    
+                    // Reset interaction flag after a delay
+                    SetTimer(hwnd_, TIMER_ID_INTERACTION, 150, nullptr); // Reset after 150ms
                     
                     return;
                 }
@@ -699,13 +706,17 @@ void ActivePluginsPanel::OnVScroll(WPARAM wParam, LPARAM lParam) {
 }
 
 void ActivePluginsPanel::OnTimer(WPARAM timerId) {
-    if (timerId == TIMER_ID_UPDATE) {
+    if (timerId == TIMER_ID_UPDATE && !userIsInteracting_) {
         // Update all parameter displays
         for (auto& plugin : plugins_) {
             if (plugin.expanded) {
                 UpdateParameterControls(plugin);
             }
         }
+    } else if (timerId == TIMER_ID_INTERACTION) {
+        // Reset interaction flag
+        userIsInteracting_ = false;
+        KillTimer(hwnd_, TIMER_ID_INTERACTION);
     }
 }
 

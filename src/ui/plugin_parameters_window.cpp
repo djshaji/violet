@@ -21,7 +21,8 @@ PluginParametersWindow::PluginParametersWindow()
     , processingChain_(nullptr)
     , nodeId_(0)
     , scrollPos_(0)
-    , maxScrollPos_(0) {
+    , maxScrollPos_(0)
+    , userIsInteracting_(false) {
 }
 
 PluginParametersWindow::~PluginParametersWindow() {
@@ -369,8 +370,12 @@ void PluginParametersWindow::OnVScroll(WPARAM wParam, LPARAM lParam) {
 }
 
 void PluginParametersWindow::OnTimer(WPARAM timerId) {
-    if (timerId == TIMER_ID_UPDATE) {
+    if (timerId == TIMER_ID_UPDATE && !userIsInteracting_) {
         RefreshParameters();
+    } else if (timerId == 2) {
+        // Reset interaction flag
+        userIsInteracting_ = false;
+        KillTimer(hwnd_, 2);
     }
 }
 
@@ -504,6 +509,9 @@ void PluginParametersWindow::OnSliderChange(HWND slider) {
     
     uint32_t paramIndex = it->second;
     
+    // Set interaction flag to prevent timer interference
+    userIsInteracting_ = true;
+    
     // Find the control
     for (const auto& control : controls_) {
         if (control.parameterIndex == paramIndex) {
@@ -518,6 +526,9 @@ void PluginParametersWindow::OnSliderChange(HWND slider) {
             
             // Update value display
             UpdateValueDisplay(paramIndex);
+            
+            // Reset interaction flag after a delay
+            SetTimer(hwnd_, 2, 150, nullptr); // Reset after 150ms
             
             break;
         }
