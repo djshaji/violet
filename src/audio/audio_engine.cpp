@@ -383,11 +383,29 @@ bool AudioEngine::Start() {
         }
     }
     
+    // Select default input device for microphone capture
+    if (currentInputDeviceId_.empty()) {
+        std::cout << "Selecting default input device..." << std::endl;
+        if (!SetInputDevice("")) { // Use default
+            std::cerr << "Warning: Failed to select default input device, audio input will be silent" << std::endl;
+            // Don't fail - we can still output audio even without input
+        }
+    }
+    
     // Create audio clients
     std::cout << "Creating audio client for output device: " << currentOutputDeviceId_ << std::endl;
     if (!CreateAudioClient(false)) { // Output
         std::cerr << "Failed to create audio client. Cannot start audio engine." << std::endl;
         return false;
+    }
+    
+    // Create input client if input device is available
+    if (!currentInputDeviceId_.empty()) {
+        std::cout << "Creating audio client for input device: " << currentInputDeviceId_ << std::endl;
+        if (!CreateAudioClient(true)) { // Input
+            std::cerr << "Warning: Failed to create input audio client, continuing without audio input" << std::endl;
+            // Don't fail - we can still output audio
+        }
     }
     
     std::cout << "Audio engine starting with:" << std::endl;
@@ -561,13 +579,21 @@ void AudioEngine::AudioThreadProc() {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     bool comInitialized = SUCCEEDED(hr);
     
-    // Start the audio client
+    // Start the audio clients
     if (outputClient_) {
         hr = outputClient_->Start();
         if (FAILED(hr)) {
             std::cerr << "Failed to start output client: 0x" << std::hex << hr << std::endl;
             if (comInitialized) CoUninitialize();
             return;
+        }
+    }
+    
+    if (inputClient_) {
+        hr = inputClient_->Start();
+        if (FAILED(hr)) {
+            std::cerr << "Warning: Failed to start input client: 0x" << std::hex << hr << std::endl;
+            // Continue without input
         }
     }
     
@@ -598,25 +624,65 @@ void AudioEngine::AudioThreadProc() {
                     UINT32 numFramesAvailable = bufferFrameCount - numFramesPadding;
                     
                     if (numFramesAvailable > 0) {
-                        BYTE* data;
-                        if (SUCCEEDED(renderClient_->GetBuffer(numFramesAvailable, &data))) {
+                        BYTE* outputData;
+                        if (SUCCEEDED(renderClient_->GetBuffer(numFramesAvailable, &outputData))) {
                             // Prepare buffers
                             inputBuffer_.resize(numFramesAvailable * currentFormat_.channels);
                             outputBuffer_.resize(numFramesAvailable * currentFormat_.channels);
                             
-                            // Clear input buffer (no input capture implemented yet)
-                            std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
+                            // Capture audio input from microphone if available
+                            bool capturedInput = false;
+                            if (captureClient_) {
+                                UINT32 packetLength = 0;
+                                if (SUCCEEDED(captureClient_->GetNextPacketSize(&packetLength)) && packetLength > 0) {
+                                    BYTE* inputData;
+                                    UINT32 framesAvailable;
+                                    DWORD flags;
+                                    
+                                    if (SUCCEEDED(captureClient_->GetBuffer(&inputData, &framesAvailable, &flags, nullptr, nullptr))) {
+                                        // Copy captured audio to input buffer
+                                        UINT32 framesToCopy = std::min(framesAvailable, numFramesAvailable);
+                                        
+                                        if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+                                            // Silence - fill with zeros
+                                            std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
+                                        } else {
+                                            // Copy audio data (assuming 32-bit float format)
+                                            if (currentFormat_.bitsPerSample == 32) {
+                                                memcpy(inputBuffer_.data(), inputData, framesToCopy * currentFormat_.channels * sizeof(float));
+                                            } else {
+                                                // TODO: Implement conversion from other formats
+                                                std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
+                                            }
+                                            
+                                            // If captured frames < needed frames, zero the rest
+                                            if (framesToCopy < numFramesAvailable) {
+                                                std::fill(inputBuffer_.begin() + (framesToCopy * currentFormat_.channels),
+                                                         inputBuffer_.end(), 0.0f);
+                                            }
+                                        }
+                                        
+                                        captureClient_->ReleaseBuffer(framesAvailable);
+                                        capturedInput = true;
+                                    }
+                                }
+                            }
                             
-                            // Call user callback
+                            // If no input captured, fill with silence
+                            if (!capturedInput) {
+                                std::fill(inputBuffer_.begin(), inputBuffer_.end(), 0.0f);
+                            }
+                            
+                            // Call user callback to process audio
                             audioCallback_(inputBuffer_.data(), outputBuffer_.data(), numFramesAvailable, callbackUserData_);
                             
                             // Convert float to target format and copy to WASAPI buffer
                             if (currentFormat_.bitsPerSample == 32) {
                                 // 32-bit float
-                                memcpy(data, outputBuffer_.data(), numFramesAvailable * currentFormat_.channels * sizeof(float));
+                                memcpy(outputData, outputBuffer_.data(), numFramesAvailable * currentFormat_.channels * sizeof(float));
                             } else {
                                 // TODO: Implement 16-bit and 24-bit conversions
-                                memset(data, 0, numFramesAvailable * currentFormat_.channels * (currentFormat_.bitsPerSample / 8));
+                                memset(outputData, 0, numFramesAvailable * currentFormat_.channels * (currentFormat_.bitsPerSample / 8));
                             }
                             
                             renderClient_->ReleaseBuffer(numFramesAvailable, 0);
@@ -636,7 +702,11 @@ void AudioEngine::AudioThreadProc() {
         }
     }
     
-    // Stop the audio client
+    // Stop the audio clients
+    if (inputClient_) {
+        inputClient_->Stop();
+    }
+    
     if (outputClient_) {
         outputClient_->Stop();
     }
