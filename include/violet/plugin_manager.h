@@ -35,15 +35,16 @@ struct PluginInfo {
 
 // Plugin parameter information
 struct ParameterInfo {
-    uint32_t index;
+    uint32_t index = 0;        // Ordinal within control inputs
+    uint32_t portIndex = 0;    // Actual LV2 port index
     std::string symbol;
     std::string name;
-    float defaultValue;
-    float minimum;
-    float maximum;
-    bool isToggle;
-    bool isInteger;
-    bool isEnum;
+    float defaultValue = 0.0f;
+    float minimum = 0.0f;
+    float maximum = 1.0f;
+    bool isToggle = false;
+    bool isInteger = false;
+    bool isEnum = false;
     std::vector<std::string> enumValues;
 };
 

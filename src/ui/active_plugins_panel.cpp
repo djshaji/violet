@@ -9,10 +9,15 @@
 #include <sstream>
 #include <iomanip>
 #include <cmath>
+#include <chrono>
 
 namespace violet {
 
 const wchar_t* ActivePluginsPanel::CLASS_NAME = L"VioletActivePluginsPanel";
+
+uint64_t ActivePluginsPanel::MakeParamKey(uint32_t nodeId, uint32_t paramIndex) const {
+    return (static_cast<uint64_t>(nodeId) << 32) | static_cast<uint64_t>(paramIndex);
+}
 
 ActivePluginsPanel::ActivePluginsPanel()
     : hwnd_(nullptr)
@@ -287,7 +292,7 @@ void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
         SendMessage(control.labelStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
         
         // Value display
-        float currentValue = instance->GetParameter(param.index);
+        float currentValue = processingChain_->GetParameter(plugin.nodeId, param.index);
         std::wstringstream ss;
         ss << std::fixed << std::setprecision(param.isInteger ? 0 : 2) << currentValue;
         
@@ -349,6 +354,9 @@ void ActivePluginsPanel::DestroyParameterControls(ActivePluginInfo& plugin) {
             }
             sliderToParam_.erase(control.minusButton);
             sliderToParam_.erase(control.plusButton);
+            uint64_t key = MakeParamKey(plugin.nodeId, control.parameterIndex);
+            pendingValues_.erase(key);
+            interactionExpiry_.erase(key);
             DestroyWindow(control.labelStatic);
         }
         if (control.valueStatic) DestroyWindow(control.valueStatic);
@@ -369,31 +377,49 @@ void ActivePluginsPanel::UpdateParameterControls(ActivePluginInfo& plugin) {
     ProcessingNode* node = processingChain_->GetNode(plugin.nodeId);
     if (!node) return;
     
-    PluginInstance* instance = node->GetPlugin();
-    if (!instance) return;
-    
+    const auto now = std::chrono::steady_clock::now();
     for (auto& control : plugin.parameters) {
-        float value = instance->GetParameter(control.parameterIndex);
-        
-        // Update value display
+        float chainValue = node->GetParameter(control.parameterIndex);
+        float displayValue = chainValue;
+        uint64_t key = MakeParamKey(plugin.nodeId, control.parameterIndex);
+        auto pendingIt = pendingValues_.find(key);
+        auto expiryIt = interactionExpiry_.find(key);
+
+        if (pendingIt != pendingValues_.end()) {
+            float pendingValue = pendingIt->second;
+            float tolerance = (control.info.maximum - control.info.minimum) / 1000.0f;
+            if (tolerance < 1e-4f) {
+                tolerance = 1e-4f;
+            }
+
+            if (std::abs(chainValue - pendingValue) <= tolerance) {
+                pendingValues_.erase(pendingIt);
+                if (expiryIt != interactionExpiry_.end()) {
+                    interactionExpiry_.erase(expiryIt);
+                }
+            } else if (expiryIt != interactionExpiry_.end() && now < expiryIt->second) {
+                displayValue = pendingValue;
+            } else {
+                pendingValues_.erase(pendingIt);
+                if (expiryIt != interactionExpiry_.end()) {
+                    interactionExpiry_.erase(expiryIt);
+                }
+            }
+        }
+
         std::wstringstream ss;
-        ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
+        ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << displayValue;
         SetWindowText(control.valueStatic, ss.str().c_str());
         
-        // Only update knob if:
-        // 1. User is NOT currently interacting with any slider, OR
-        // 2. This specific knob is NOT the one being interacted with
         bool shouldUpdate = !userIsInteracting_ || (control.knob && control.knob->GetHandle() != activeSlider_);
-        
         if (shouldUpdate && control.knob) {
-            // Get current knob value
             float currentValue = control.knob->GetValue();
-            
-            // Only update if the value has changed significantly
-            // Use a larger threshold for 0.0-1.0 ranges to avoid precision issues
             float threshold = (control.info.maximum - control.info.minimum) / 100.0f;
-            if (std::abs(value - currentValue) > threshold) {
-                control.knob->SetValue(value);
+            if (threshold < 1e-3f) {
+                threshold = 1e-3f;
+            }
+            if (std::abs(displayValue - currentValue) > threshold) {
+                control.knob->SetValue(displayValue);
             }
         }
     }
@@ -432,7 +458,12 @@ void ActivePluginsPanel::OnSliderChange(HWND slider) {
                     float value = SliderPosToValue(sliderPos, control.info);
                     
                     if (processingChain_) {
-                        processingChain_->SetParameter(nodeId, paramIndex, value);
+                        if (processingChain_->SetParameter(nodeId, paramIndex, value)) {
+                            uint64_t key = MakeParamKey(nodeId, paramIndex);
+                            pendingValues_[key] = value;
+                            interactionExpiry_[key] = std::chrono::steady_clock::now() +
+                                std::chrono::milliseconds(PENDING_HOLD_MS);
+                        }
                     }
                     
                     // Update value display
@@ -682,7 +713,12 @@ void ActivePluginsPanel::OnCommand(WPARAM wParam, LPARAM lParam) {
                             }
                             
                             if (processingChain_) {
-                                processingChain_->SetParameter(nodeId, paramIndex, newValue);
+                                if (processingChain_->SetParameter(nodeId, paramIndex, newValue)) {
+                                    uint64_t key = MakeParamKey(nodeId, paramIndex);
+                                    pendingValues_[key] = newValue;
+                                    interactionExpiry_[key] = std::chrono::steady_clock::now() +
+                                        std::chrono::milliseconds(PENDING_HOLD_MS);
+                                }
                             }
                             
                             // Update value display
@@ -795,7 +831,12 @@ void ActivePluginsPanel::OnHScroll(WPARAM wParam, LPARAM lParam) {
                         float value = ctrl.knob->GetValue();
                         
                         if (processingChain_) {
-                            processingChain_->SetParameter(nodeId, paramIndex, value);
+                            if (processingChain_->SetParameter(nodeId, paramIndex, value)) {
+                                uint64_t key = MakeParamKey(nodeId, paramIndex);
+                                pendingValues_[key] = value;
+                                interactionExpiry_[key] = std::chrono::steady_clock::now() +
+                                    std::chrono::milliseconds(PENDING_HOLD_MS);
+                            }
                         }
                         
                         // Update value display
@@ -866,7 +907,7 @@ void ActivePluginsPanel::OnTimer(WPARAM timerId) {
     } else if (timerId == TIMER_ID_INTERACTION) {
         // Reset interaction flag and clear active slider
         userIsInteracting_ = false;
-        activeSlider_ = nullptr;
+            activeSlider_ = nullptr; // Reset active slider handle when interaction timer ends
         KillTimer(hwnd_, TIMER_ID_INTERACTION);
     }
 }

@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 
 namespace violet {
 
@@ -145,23 +146,16 @@ void PluginParametersWindow::RefreshParameters() {
 void PluginParametersWindow::UpdateParameterValue(uint32_t parameterIndex) {
     if (!processingChain_ || nodeId_ == 0) return;
     
-    ProcessingNode* node = processingChain_->GetNode(nodeId_);
-    if (!node) return;
-    
-    PluginInstance* plugin = node->GetPlugin();
-    if (!plugin) return;
-    
     // Find the control
     for (auto& control : controls_) {
         if (control.parameterIndex == parameterIndex) {
-            float value = plugin->GetParameter(parameterIndex);
+            float chainValue = processingChain_->GetParameter(nodeId_, parameterIndex);
+            float displayValue = ResolveDisplayValue(parameterIndex, control.info, chainValue);
             
-            // Update slider position
-            int sliderPos = ValueToSliderPosition(value, control.info);
+            int sliderPos = ValueToSliderPosition(displayValue, control.info);
             SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
             
-            // Update value display
-            std::wstring valueText = FormatParameterValue(control.info, value);
+            std::wstring valueText = FormatParameterValue(control.info, displayValue);
             SetWindowText(control.valueStatic, valueText.c_str());
             
             break;
@@ -290,6 +284,17 @@ void PluginParametersWindow::OnCommand(WPARAM wParam, LPARAM lParam) {
 void PluginParametersWindow::OnHScroll(WPARAM wParam, LPARAM lParam) {
     HWND slider = reinterpret_cast<HWND>(lParam);
     if (slider) {
+        int action = LOWORD(wParam);
+        
+        // Set interaction flag for all slider movements
+        if (action == TB_THUMBTRACK || action == TB_THUMBPOSITION || 
+            action == TB_PAGEUP || action == TB_PAGEDOWN ||
+            action == TB_LINEUP || action == TB_LINEDOWN || action == TB_ENDTRACK) {
+            userIsInteracting_ = true;
+            // Reset the timer each time
+            SetTimer(hwnd_, 2, 150, nullptr);
+        }
+        
         OnSliderChange(slider);
     }
 }
@@ -424,6 +429,8 @@ void PluginParametersWindow::DestroyControls() {
     controls_.clear();
     sliderToIndex_.clear();
     buttonToIndex_.clear();
+    pendingValues_.clear();
+    interactionExpiry_.clear();
 }
 
 void PluginParametersWindow::CreateParameterControl(const ParameterInfo& param, int& yPos) {
@@ -447,14 +454,9 @@ void PluginParametersWindow::CreateParameterControl(const ParameterInfo& param, 
     
     // Value display
     float currentValue = 0.0f;
-    if (processingChain_) {
-        ProcessingNode* node = processingChain_->GetNode(nodeId_);
-        if (node) {
-            PluginInstance* plugin = node->GetPlugin();
-            if (plugin) {
-                currentValue = plugin->GetParameter(param.index);
-            }
-        }
+    if (processingChain_ && nodeId_ != 0) {
+        float chainValue = processingChain_->GetParameter(nodeId_, param.index);
+        currentValue = ResolveDisplayValue(param.index, param, chainValue);
     }
     
     std::wstring valueText = FormatParameterValue(param, currentValue);
@@ -509,9 +511,6 @@ void PluginParametersWindow::OnSliderChange(HWND slider) {
     
     uint32_t paramIndex = it->second;
     
-    // Set interaction flag to prevent timer interference
-    userIsInteracting_ = true;
-    
     // Find the control
     for (const auto& control : controls_) {
         if (control.parameterIndex == paramIndex) {
@@ -521,14 +520,15 @@ void PluginParametersWindow::OnSliderChange(HWND slider) {
             
             // Update plugin parameter
             if (processingChain_) {
-                processingChain_->SetParameter(nodeId_, paramIndex, value);
+                if (processingChain_->SetParameter(nodeId_, paramIndex, value)) {
+                    pendingValues_[paramIndex] = value;
+                    interactionExpiry_[paramIndex] = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(PENDING_HOLD_MS);
+                }
             }
             
             // Update value display
             UpdateValueDisplay(paramIndex);
-            
-            // Reset interaction flag after a delay
-            SetTimer(hwnd_, 2, 150, nullptr); // Reset after 150ms
             
             break;
         }
@@ -543,10 +543,13 @@ void PluginParametersWindow::OnResetButton(uint32_t parameterIndex) {
             
             // Update plugin parameter
             if (processingChain_) {
-                processingChain_->SetParameter(nodeId_, parameterIndex, defaultValue);
+                if (processingChain_->SetParameter(nodeId_, parameterIndex, defaultValue)) {
+                    pendingValues_[parameterIndex] = defaultValue;
+                    interactionExpiry_[parameterIndex] = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(PENDING_HOLD_MS);
+                }
             }
             
-            // Update slider and value display
             UpdateSliderPosition(parameterIndex);
             UpdateValueDisplay(parameterIndex);
             
@@ -558,16 +561,11 @@ void PluginParametersWindow::OnResetButton(uint32_t parameterIndex) {
 void PluginParametersWindow::UpdateValueDisplay(uint32_t parameterIndex) {
     if (!processingChain_ || nodeId_ == 0) return;
     
-    ProcessingNode* node = processingChain_->GetNode(nodeId_);
-    if (!node) return;
-    
-    PluginInstance* plugin = node->GetPlugin();
-    if (!plugin) return;
-    
     for (const auto& control : controls_) {
         if (control.parameterIndex == parameterIndex) {
-            float value = plugin->GetParameter(parameterIndex);
-            std::wstring valueText = FormatParameterValue(control.info, value);
+            float chainValue = processingChain_->GetParameter(nodeId_, parameterIndex);
+            float displayValue = ResolveDisplayValue(parameterIndex, control.info, chainValue);
+            std::wstring valueText = FormatParameterValue(control.info, displayValue);
             SetWindowText(control.valueStatic, valueText.c_str());
             break;
         }
@@ -577,20 +575,45 @@ void PluginParametersWindow::UpdateValueDisplay(uint32_t parameterIndex) {
 void PluginParametersWindow::UpdateSliderPosition(uint32_t parameterIndex) {
     if (!processingChain_ || nodeId_ == 0) return;
     
-    ProcessingNode* node = processingChain_->GetNode(nodeId_);
-    if (!node) return;
-    
-    PluginInstance* plugin = node->GetPlugin();
-    if (!plugin) return;
-    
     for (const auto& control : controls_) {
         if (control.parameterIndex == parameterIndex) {
-            float value = plugin->GetParameter(parameterIndex);
-            int sliderPos = ValueToSliderPosition(value, control.info);
+            float chainValue = processingChain_->GetParameter(nodeId_, parameterIndex);
+            float displayValue = ResolveDisplayValue(parameterIndex, control.info, chainValue);
+            int sliderPos = ValueToSliderPosition(displayValue, control.info);
             SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
             break;
         }
     }
+}
+
+float PluginParametersWindow::ResolveDisplayValue(uint32_t parameterIndex, const ParameterInfo& paramInfo, float chainValue) {
+    float displayValue = chainValue;
+    auto pendingIt = pendingValues_.find(parameterIndex);
+    auto expiryIt = interactionExpiry_.find(parameterIndex);
+    auto now = std::chrono::steady_clock::now();
+    float tolerance = (paramInfo.maximum - paramInfo.minimum) / 1000.0f;
+    if (tolerance < 1e-4f) {
+        tolerance = 1e-4f;
+    }
+
+    if (pendingIt != pendingValues_.end()) {
+        float pendingValue = pendingIt->second;
+        if (std::abs(chainValue - pendingValue) <= tolerance) {
+            pendingValues_.erase(pendingIt);
+            if (expiryIt != interactionExpiry_.end()) {
+                interactionExpiry_.erase(expiryIt);
+            }
+        } else if (expiryIt != interactionExpiry_.end() && now < expiryIt->second) {
+            displayValue = pendingValue;
+        } else {
+            pendingValues_.erase(pendingIt);
+            if (expiryIt != interactionExpiry_.end()) {
+                interactionExpiry_.erase(expiryIt);
+            }
+        }
+    }
+
+    return displayValue;
 }
 
 std::wstring PluginParametersWindow::FormatParameterValue(const ParameterInfo& param, float value) {

@@ -6,6 +6,8 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <unordered_map>
+#include <chrono>
 #include <cstdint>
 #include "violet/plugin_manager.h"
 
@@ -81,6 +83,7 @@ private:
     void OnResetButton(uint32_t parameterIndex);
     void UpdateValueDisplay(uint32_t parameterIndex);
     void UpdateSliderPosition(uint32_t parameterIndex);
+    float ResolveDisplayValue(uint32_t parameterIndex, const ParameterInfo& paramInfo, float chainValue);
     
     // Utility
     std::wstring FormatParameterValue(const ParameterInfo& param, float value);
@@ -122,9 +125,12 @@ private:
     // Update timer
     static const int TIMER_ID_UPDATE = 1;
     static const int UPDATE_INTERVAL_MS = 100;
+    static const int PENDING_HOLD_MS = 750;
     
     // User interaction state
     bool userIsInteracting_;
+    std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> interactionExpiry_;
+    std::unordered_map<uint32_t, float> pendingValues_;
     
     // Window class
     static const wchar_t* CLASS_NAME;

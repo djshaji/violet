@@ -7,6 +7,8 @@
 #include <vector>
 #include <memory>
 #include <map>
+#include <unordered_map>
+#include <chrono>
 #include "violet/plugin_manager.h"
 
 namespace violet {
@@ -158,10 +160,14 @@ private:
     static const int TIMER_ID_UPDATE = 2;
     static const int TIMER_ID_INTERACTION = 3;
     static const int UPDATE_INTERVAL_MS = 100;
+    static const int PENDING_HOLD_MS = 750;
     
     // User interaction state
     bool userIsInteracting_;
     HWND activeSlider_;  // Track which slider is currently being interacted with
+    std::unordered_map<uint64_t, std::chrono::steady_clock::time_point> interactionExpiry_;
+    std::unordered_map<uint64_t, float> pendingValues_;
+    uint64_t MakeParamKey(uint32_t nodeId, uint32_t paramIndex) const;
     
     // Window class
     static const wchar_t* CLASS_NAME;

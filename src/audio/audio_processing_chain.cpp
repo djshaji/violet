@@ -233,21 +233,35 @@ void ProcessingNode::ProcessAutomation(uint32_t currentSample, uint32_t frames) 
 }
 
 void ProcessingNode::SetParameter(uint32_t parameterIndex, float value) {
-    if (parameterIndex < controlValues_.size()) {
-        // Validate parameter range if plugin instance has parameter info
-        if (plugin_) {
-            auto parameters = plugin_->GetParameters();
-            for (const auto& param : parameters) {
-                if (param.index == parameterIndex) {
-                    value = std::max(param.minimum, std::min(param.maximum, value));
-                    if (param.isInteger) {
-                        value = round(value);
-                    }
-                    break;
-                }
+    if (plugin_) {
+        auto parameters = plugin_->GetParameters();
+
+        if (parameterIndex >= controlValues_.size()) {
+            auto fallback = std::find_if(parameters.begin(), parameters.end(),
+                [parameterIndex](const ParameterInfo& info) {
+                    return info.portIndex == parameterIndex;
+                });
+            if (fallback != parameters.end()) {
+                parameterIndex = fallback->index;
+            } else {
+                return;
             }
         }
-        
+
+        for (const auto& param : parameters) {
+            if (param.index == parameterIndex) {
+                value = std::max(param.minimum, std::min(param.maximum, value));
+                if (param.isInteger) {
+                    value = std::round(value);
+                }
+                break;
+            }
+        }
+    } else if (parameterIndex >= controlValues_.size()) {
+        return;
+    }
+
+    if (parameterIndex < controlValues_.size()) {
         controlValues_[parameterIndex] = value;
         parameterChanged_[parameterIndex] = true;
     }
@@ -257,6 +271,16 @@ float ProcessingNode::GetParameter(uint32_t parameterIndex) const {
     if (parameterIndex < controlValues_.size()) {
         return controlValues_[parameterIndex];
     }
+    
+    if (plugin_) {
+        auto parameters = plugin_->GetParameters();
+        for (const auto& param : parameters) {
+            if (param.portIndex == parameterIndex && param.index < controlValues_.size()) {
+                return controlValues_[param.index];
+            }
+        }
+    }
+    
     return 0.0f;
 }
 

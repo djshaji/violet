@@ -135,7 +135,8 @@ void PluginInstance::InitializePorts() {
                 
                 // Extract parameter info
                 ParameterInfo paramInfo;
-                paramInfo.index = i;
+                paramInfo.index = static_cast<uint32_t>(controlInputPorts_.size() - 1); // ordinal index
+                paramInfo.portIndex = i;
                 
                 const LilvNode* symbolNode = lilv_port_get_symbol(plugin_, port);
                 paramInfo.symbol = symbolNode ? lilv_node_as_string(symbolNode) : "";
@@ -309,30 +310,50 @@ void PluginInstance::ConnectMidiOutput(uint32_t port, LV2_Atom_Sequence* buffer)
 }
 
 void PluginInstance::SetParameter(uint32_t index, float value) {
-    if (index < controlValues_.size()) {
-        auto it = parameterInfo_.find(index);
-        if (it != parameterInfo_.end()) {
-            const ParameterInfo& info = it->second;
-            value = std::max(info.minimum, std::min(info.maximum, value));
-            if (info.isInteger) {
-                value = std::round(value);
-            }
+    if (index >= controlInputPorts_.size()) {
+        return;
+    }
+
+    uint32_t portIndex = controlInputPorts_[index];
+
+    auto it = parameterInfo_.find(portIndex);
+    if (it != parameterInfo_.end()) {
+        const ParameterInfo& info = it->second;
+        value = std::max(info.minimum, std::min(info.maximum, value));
+        if (info.isInteger) {
+            value = std::round(value);
         }
-        controlValues_[index] = value;
+    }
+
+    if (portIndex < controlValues_.size()) {
+        controlValues_[portIndex] = value;
     }
 }
 
 float PluginInstance::GetParameter(uint32_t index) const {
-    if (index < controlValues_.size()) {
-        return controlValues_[index];
+    if (index >= controlInputPorts_.size()) {
+        return 0.0f;
+    }
+
+    uint32_t portIndex = controlInputPorts_[index];
+    if (portIndex < controlValues_.size()) {
+        return controlValues_[portIndex];
     }
     return 0.0f;
 }
 
 std::vector<ParameterInfo> PluginInstance::GetParameters() const {
     std::vector<ParameterInfo> params;
-    for (const auto& pair : parameterInfo_) {
-        params.push_back(pair.second);
+    params.reserve(controlInputPorts_.size());
+    for (size_t ordinal = 0; ordinal < controlInputPorts_.size(); ++ordinal) {
+        uint32_t portIndex = controlInputPorts_[ordinal];
+        auto it = parameterInfo_.find(portIndex);
+        if (it != parameterInfo_.end()) {
+            ParameterInfo info = it->second;
+            info.index = static_cast<uint32_t>(ordinal);
+            info.portIndex = portIndex;
+            params.push_back(std::move(info));
+        }
     }
     return params;
 }
