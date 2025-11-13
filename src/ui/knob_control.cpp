@@ -59,6 +59,15 @@ HWND KnobControl::Create(HWND parent, HINSTANCE hInstance, int x, int y, int siz
         x, y, size, size,
         parent, (HMENU)(INT_PTR)id, hInstance, this
     );
+
+    if (hwnd_) {
+        HRGN region = CreateEllipticRgn(0, 0, size, size);
+        if (region) {
+            if (!SetWindowRgn(hwnd_, region, TRUE)) {
+                DeleteObject(region);
+            }
+        }
+    }
     
     return hwnd_;
 }
@@ -161,10 +170,14 @@ void KnobControl::DrawKnob(HDC hdc) {
     RECT rect;
     GetClientRect(hwnd_, &rect);
     
-    // Fill background
-    HBRUSH bgBrush = CreateSolidBrush(colors.background);
-    FillRect(hdc, &rect, bgBrush);
-    DeleteObject(bgBrush);
+    // Fill background using circular region so the control stays round
+    HRGN clipRegion = CreateEllipticRgn(rect.left, rect.top, rect.right, rect.bottom);
+    if (clipRegion) {
+        HBRUSH bgBrush = CreateSolidBrush(colors.background);
+        FillRgn(hdc, clipRegion, bgBrush);
+        DeleteObject(bgBrush);
+        DeleteObject(clipRegion);
+    }
     
     // Calculate knob circle
     int centerX = (rect.right - rect.left) / 2;
