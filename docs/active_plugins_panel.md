@@ -1,238 +1,84 @@
 # Active Plugins Panel Implementation
 
 ## Overview
-The Active Plugins Panel is a visual display of the audio processing chain, showing all loaded plugins in order. Users can interact with plugins through visual representation, context menus, and will be able to adjust parameters in real-time.
+The Active Plugins Panel presents the live audio processing chain as a vertical stack of expandable plugin sections. Each plugin exposes a grid of inline parameter controls so users can tweak sounds without opening a separate window. The panel keeps UI state in sync with the audio engine while protecting users from parameter jumps that can occur during rapid automation updates.
 
-## Features Implemented
+## Feature Summary
 
-### 1. Visual Plugin Chain Display
-- **Plugin Cards**: Each plugin is displayed as a visual card showing:
-  - Plugin name (truncated if too long)
-  - Visual state indicators
-  - Selection highlighting
-- **Connection Lines**: Visual arrows showing audio flow between plugins
-- **Layout Management**: Automatic arrangement with wrapping for multiple plugins
-- **Empty State**: Helpful message when no plugins are loaded
+### Plugin Header
+- Displays plugin name, URI tooltips, selection highlight, and hover feedback
+- Provides **Bypass** and **Remove** push buttons aligned to the right edge
+- Includes a global **Remove All Plugins** button pinned to the top of the panel
 
-### 2. Plugin Loading
-- **Double-Click**: Double-click a plugin in the browser to load it
-- **Automatic Addition**: Plugins are automatically added to the visual chain
-- **Status Feedback**: Status bar shows loaded plugin name
-- **Integration**: Seamlessly connected to audio processing chain backend
+### Parameter Controls
+- Parameters render as **round knob controls** arranged in a three-column grid
+- Knobs show name labels above and numeric value readouts below
+- Inline **− / +** nudge buttons sit on either side of each knob for precise adjustments
+- Values update immediately while preserving pending user edits even if the backend lags
 
-### 3. Plugin Management
-- **Selection**: Click to select a plugin (highlighted border)
-- **Context Menu** (right-click):
-  - **Edit Parameters**: Opens parameter editor (planned)
-  - **Bypass**: Toggle plugin bypass (planned)
-  - **Move Up/Down**: Reorder plugins in chain (planned)
-  - **Remove**: Remove plugin from chain
+### Layout & Scrolling
+- Grid constants (`PARAMETERS_PER_ROW`, `COLUMN_WIDTH`, `PARAM_HEIGHT`, `LABEL_HEIGHT`) keep knob geometry consistent
+- Row height supports taller circular knobs (72 px default) with generous hit targets
+- Panel supports smooth vertical scrolling with a Windows scrollbar when content exceeds the viewport
 
-### 4. Visual Feedback
-- **Selected State**: Blue border (RGB 0, 120, 215) for selected plugin
-- **Normal State**: Gray border for unselected plugins
-- **Bypassed State**: Gray background when plugin is bypassed
-- **Hover Effect**: Visual indication when hovering over plugins
-- **Active Indicator**: Red dot shows inactive plugins
+### Interaction & Feedback
+- Selection highlight follows single-clicks; double-click headers toggle parameter expansion
+- Context menu (right-click) exposes remove/bypass/move actions for future extensions
+- Hover tracking updates plugin headers to aid discovery
+- Timer-driven refresh (100 ms) keeps knobs in sync while skipping user-controlled widgets during drags
 
-## User Interface Layout
+## UI Layout
 
 ```
-+----------------------------------------------------------+
-|  Plugin 1   →   Plugin 2   →   Plugin 3                 |
-| [Name____]     [Name____]     [Name____]                 |
-| [        ]     [        ]     [        ]                 |
-+----------------------------------------------------------+
+┌───────────────────────────────────────────────┐
+│ Remove All Plugins [button]                   │
+├───────────────────────────────────────────────┤
+│ Plugin Name                             [B] [X]
+│ ┌─────────────┬─────────────┬─────────────┐
+│ │ Label       │ Label       │ Label       │
+│ │   ◯ knob    │   ◯ knob    │   ◯ knob    │
+│ │ [-]     [+] │ [-]     [+] │ [-]     [+] │
+│ │   value     │   value     │   value     │
+│ └─────────────┴─────────────┴─────────────┘
+│ (additional rows as needed...)              │
+└───────────────────────────────────────────────┘
 ```
 
-### Plugin Card Details
-- **Size**: 120x80 pixels per plugin
-- **Spacing**: 20 pixels between plugins
-- **Margins**: 20 pixels from panel edges
-- **Wrapping**: Automatic wrapping to next line if width exceeded
+## Parameter Control Details
+- **KnobControl** windows receive circular regions (`CreateEllipticRgn`) so only the dial is interactive
+- Background fill uses `FillRgn` to maintain a round footprint that respects theme colors
+- Knob range maps across 270° sweep (135° start, 405° end) with pointer and center dot styling
+- Pending value cache (`pendingValues_`) avoids snap-backs while the audio thread applies changes
+- Interaction timers (`TIMER_ID_INTERACTION`) prevent backend refresh from fighting active drags
+- Numeric display precision adapts to integer vs floating-point parameters
 
-## Technical Details
+## Event Flow
+1. **Creation**: `CreateParameterControls` queries `ProcessingNode` metadata and instantiates label/value statics, buttons, and knobs per parameter
+2. **User Input**: Button/knob messages map through `sliderToParam_` into `AudioProcessingChain::SetParameter`
+3. **Sync Loop**: WM_TIMER drives `UpdateParameterControls`, reconciling backend values with pending cache
+4. **Layout**: `RecalculateLayout` repositions headers and knobs on resize or scroll, using cached column/row indices for stability
 
-### Files Created
-- `include/violet/active_plugins_panel.h` - Header file with class definition
-- `src/ui/active_plugins_panel.cpp` - Implementation file
+## Integration Points
+- `MainWindow`: owns and resizes the panel alongside the plugin browser
+- `AudioProcessingChain`: supplies parameter data, node IDs, and current values
+- `PluginManager`: fills `ParameterInfo` structs with min/max/default metadata
+- `KnobControl`: dedicated window class defined in `src/ui/knob_control.cpp`
 
-### Integration Points
-- **MainWindow**: Integrated into main window layout (right panel)
-- **PluginBrowser**: Receives double-click events to load plugins
-- **AudioProcessingChain**: Connected to backend for actual plugin management
-- **PluginManager**: Retrieves plugin information for display
+## Manual Testing Checklist
+1. Load multiple plugins and confirm knobs appear three per row
+2. Drag knobs; verify values hold steady when new audio updates arrive
+3. Use +/- buttons to step values; confirm pending cache resolves once audio catches up
+4. Collapse/expand plugins and ensure controls destroy/recreate cleanly without leaks
+5. Scroll through long chains; check headers/buttons track positions correctly
+6. Remove plugins individually and en-masse; ensure orphaned controls are destroyed
 
-### API
-
-#### Key Methods
-```cpp
-// Create the panel
-bool Create(HWND parent, HINSTANCE hInstance, int x, int y, int width, int height);
-
-// Set processing chain
-void SetProcessingChain(AudioProcessingChain* chain);
-
-// Plugin management
-void AddPlugin(uint32_t nodeId, const std::string& name, const std::string& uri);
-void RemovePlugin(uint32_t nodeId);
-void ClearPlugins();
-
-// Display
-void Refresh();
-void Resize(int x, int y, int width, int height);
-
-// Selection
-uint32_t GetSelectedPlugin() const;
-```
-
-## User Workflow
-
-### Loading a Plugin
-1. User browses plugins in the Plugin Browser (left panel)
-2. User double-clicks desired plugin
-3. Plugin is loaded into AudioProcessingChain
-4. Plugin appears in Active Plugins Panel with visual card
-5. Status bar shows "Loaded: [Plugin Name]"
-
-### Managing Plugins
-1. **Select**: Click on plugin card
-2. **Right-Click**: Opens context menu with options:
-   - Edit Parameters (opens parameter window - planned)
-   - Bypass (toggle audio processing - planned)
-   - Move Up/Down (reorder in chain - planned)
-   - Remove (removes from chain - working)
-
-### Visual Feedback
-- **Blue Border**: Selected plugin
-- **Gray Background**: Bypassed plugin
-- **Red Indicator**: Inactive/error state
-- **Arrows**: Show audio flow direction
-
-## Drawing Implementation
-
-### Double-Buffered Rendering
-The panel uses double-buffering to prevent flicker:
-1. Creates off-screen bitmap
-2. Draws all elements to memory
-3. Copies final image to screen
-4. Provides smooth, flicker-free updates
-
-### Custom Drawing
-- **Plugin Cards**: Rounded rectangles with custom colors
-- **Connections**: Lines with arrow heads showing flow
-- **Text**: Centered plugin names with truncation
-- **Status Indicators**: Color-coded state visualization
-
-## Context Menu Actions
-
-### Currently Implemented
-- **Remove**: Removes plugin from processing chain ✅
-
-### Planned Features
-- **Edit Parameters**: Opens detailed parameter editor window
-- **Bypass**: Toggle plugin processing on/off
-- **Move Up/Down**: Reorder plugins in the chain
-- **Save Preset**: Save current plugin settings
-- **Load Preset**: Load saved settings
-
-## Integration with Audio Backend
-
-```cpp
-// When plugin is loaded
-uint32_t nodeId = processingChain_->AddPlugin(pluginUri);
-activePluginsPanel_->AddPlugin(nodeId, pluginName, pluginUri);
-
-// When plugin is removed
-processingChain_->RemovePlugin(nodeId);
-activePluginsPanel_->RemovePlugin(nodeId);
-```
-
-## Visual Design
-
-### Color Scheme
-- **Background**: Window color (light gray)
-- **Plugin Card**: Light gray (RGB 240, 240, 240)
-- **Selected Border**: Blue (RGB 0, 120, 215)
-- **Normal Border**: Gray (RGB 100, 100, 100)
-- **Connections**: Dark gray (RGB 100, 100, 100)
-- **Bypassed**: Light gray (RGB 220, 220, 220)
-- **Error Indicator**: Red (RGB 255, 0, 0)
-
-### Typography
-- **Font**: Segoe UI (Windows default)
-- **Size**: Default system font
-- **Style**: Centered, single-line with ellipsis for long names
-
-## Next Steps
-
-### Priority Features
-1. **Parameter Editors**: Implement slider/knob controls for plugin parameters
-2. **Bypass Toggle**: Add working bypass functionality
-3. **Plugin Reordering**: Implement drag-and-drop or move up/down
-4. **Drag-and-Drop**: Allow dragging plugins from browser to panel
-5. **Visual Enhancements**: Add plugin icons, better styling
-
-### Future Enhancements
-- **Zoom Controls**: Zoom in/out on plugin chain
-- **Mini Map**: Overview of entire chain for large projects
-- **Plugin Meters**: Show input/output levels
-- **CPU Usage Per Plugin**: Display individual plugin CPU usage
-- **Preset Management**: Quick access to plugin presets
-- **Plugin Groups**: Organize plugins into collapsible groups
-
-## Build Information
-
-Successfully compiles with MinGW-w64:
-```bash
-meson setup build --cross-file cross-mingw64.txt
-ninja -C build
-```
-
-## Example Usage
-
-```cpp
-// In MainWindow initialization
-activePluginsPanel_ = std::make_unique<ActivePluginsPanel>();
-activePluginsPanel_->Create(hwnd_, hInstance_, x, y, width, height);
-activePluginsPanel_->SetProcessingChain(processingChain_.get());
-
-// When user double-clicks plugin in browser
-void MainWindow::LoadPlugin(const std::string& pluginUri) {
-    uint32_t nodeId = processingChain_->AddPlugin(pluginUri);
-    activePluginsPanel_->AddPlugin(nodeId, pluginName, pluginUri);
-}
-```
-
-## Testing
-
-### Manual Testing Steps
-1. Launch Violet application
-2. Verify left panel shows plugin browser
-3. Verify right panel shows "No plugins loaded" message
-4. Double-click a plugin in browser
-5. Verify plugin appears in active plugins panel
-6. Verify status bar shows "Loaded: [Plugin Name]"
-7. Click on plugin card - verify blue selection border
-8. Right-click plugin - verify context menu appears
-9. Select "Remove" - verify plugin is removed
-10. Repeat with multiple plugins - verify layout and connections
-
-## Performance
-
-- **Rendering**: Smooth 60 FPS with double-buffering
-- **Memory**: Minimal overhead per plugin (mainly UI elements)
-- **Updates**: Efficient invalidation only when needed
-- **Scalability**: Handles dozens of plugins with automatic wrapping
-
-## Accessibility
-
-- **Visual Indicators**: Clear selection and state indication
-- **Context Menus**: Keyboard accessible (right-click menu)
-- **Status Messages**: Status bar provides feedback
-- **Error Handling**: Graceful failure with error dialogs
+## Future Enhancements
+- Keyboard focus and accessibility for knobs and inline buttons
+- Drag-and-drop reordering of plugins within the panel
+- Per-plugin meters positioned beneath the knob grid
+- Optional compact mode for laptops with limited vertical space
 
 ---
 
-**Status**: ✅ Completed and integrated (November 7, 2025)  
-**Next**: Parameter control UI implementation
+**Status**: ✅ Inline knob grid shipped & synced with audio engine (November 2025)  
+**Next**: Keyboard accessibility and chain reordering

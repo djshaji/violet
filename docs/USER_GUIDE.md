@@ -30,7 +30,7 @@
 
 The installer automatically:
 - Installs to `C:\Program Files\Violet`
-- Creates Start Menu and desktop shortcuts
+- Creates Start Menu and desktop shortcuts that launch inside the Violet install directory
 - Sets up the `LV2_PATH` environment variable
 - Registers in Windows Add/Remove Programs
 
@@ -90,11 +90,9 @@ The plugin browser shows all available LV2 plugins in your system:
 
 This panel shows your current plugin chain:
 
-- **Plugin Cards**: Each loaded plugin appears as a card
-- **Parameter Sliders**: Adjust plugin parameters in real-time
-- **Bypass Button (B)**: Temporarily disable a plugin without removing it
-- **Remove Button (X)**: Remove plugin from the chain
-- **Remove All Plugins**: Button at the bottom to clear entire chain
+- **Plugin Headers**: Each loaded plugin displays its name with inline bypass and remove buttons
+- **Round Parameter Knobs**: Three-column grid of knobs with numeric readouts and +/- nudge buttons for fine control
+- **Remove All Plugins**: Button at the top to clear the entire chain
 
 **Signal Flow**: Audio flows from **top to bottom** through the plugin chain.
 
@@ -125,12 +123,12 @@ Displays real-time information:
 
 ### Adjusting Parameters
 
-Each plugin shows its available parameters as sliders:
+Each plugin shows its available parameters as knobs:
 
-1. **Hover** over a slider to see the parameter name and current value
-2. **Click and drag** left/right to adjust the value
-3. **Changes apply instantly** to the audio signal
-4. **Value display** updates in real-time
+1. **Hover** over a knob to confirm the parameter name and see the live value readout beneath it
+2. **Click and drag** vertically to tweak the value, or use the mouse wheel for small adjustments
+3. **Tap the − / + buttons** beside each knob for precise 1% (or 1-step for integer parameters) nudges
+4. **Changes apply instantly** to the audio signal, while the numeric display keeps pace with the audio engine
 
 **Parameter Types:**
 - **Continuous**: Smooth values (e.g., gain, frequency)

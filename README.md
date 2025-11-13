@@ -32,7 +32,7 @@ A lightweight LV2 plugin host for real-time audio processing on Windows.
 - ✅ Modern Windows application with menu bar and status bar
 - ✅ **Plugin Browser Panel**: Tree view with search and category filtering
 - ✅ **Active Plugins Panel**: Vertical list with inline parameter controls
-  - Real-time sliders with value display
+   - Round parameter knobs laid out three per row with live value readouts
   - Bypass toggle button per plugin
   - Remove button per plugin
   - Remove All button to clear chain
@@ -154,6 +154,7 @@ makensis violet-installer.nsi
    - Create a desktop shortcut
    - Set up the LV2_PATH environment variable
    - Register the application in Add/Remove Programs
+   - Launch shortcuts from the Violet install directory for predictable working paths
 4. Launch Violet from the Start Menu or desktop shortcut
 
 ### Manual Installation
