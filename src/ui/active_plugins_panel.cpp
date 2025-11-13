@@ -270,67 +270,80 @@ void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
     std::vector<ParameterInfo> params = instance->GetParameters();
     
     HFONT hFont = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
-    int yOffset = PLUGIN_HEADER_HEIGHT;
-    
+    size_t paramIndex = 0;
     for (const auto& param : params) {
-        InlineParameterControl control;
+        InlineParameterControl control{};
         control.parameterIndex = param.index;
         control.info = param;
-        control.yOffset = yOffset;
+        control.column = static_cast<int>(paramIndex % PARAMETERS_PER_ROW);
+        control.row = static_cast<int>(paramIndex / PARAMETERS_PER_ROW);
+        control.xOffset = MARGIN + control.column * COLUMN_WIDTH;
+        control.yOffset = PLUGIN_HEADER_HEIGHT + control.row * PARAM_HEIGHT;
         
-        int absoluteY = plugin.yPos + yOffset - scrollPos_;
+        int absoluteY = plugin.yPos + control.yOffset - scrollPos_;
+        int baseX = control.xOffset;
+        int labelY = absoluteY;
+        int labelWidth = COLUMN_WIDTH;
         
-        // Parameter label
         control.labelStatic = CreateWindowEx(
             0, L"STATIC",
             utils::StringToWString(param.name).c_str(),
-            WS_CHILD | WS_VISIBLE | SS_LEFT,
-            MARGIN, absoluteY,
-            LABEL_WIDTH, 20,
+            WS_CHILD | WS_VISIBLE | SS_CENTER,
+            baseX, labelY,
+            labelWidth, LABEL_HEIGHT,
             hwnd_, nullptr, hInstance_, nullptr
         );
         SendMessage(control.labelStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
         
-        // Value display
         float currentValue = processingChain_->GetParameter(plugin.nodeId, param.index);
         std::wstringstream ss;
         ss << std::fixed << std::setprecision(param.isInteger ? 0 : 2) << currentValue;
+        
+        int knobX = baseX + (COLUMN_WIDTH - KNOB_SIZE) / 2;
+        int knobY = labelY + LABEL_HEIGHT + 4;
+        int buttonY = knobY + (KNOB_SIZE - INLINE_BUTTON_SIZE) / 2;
+        int minusX = knobX - INLINE_BUTTON_SIZE - 6;
+        int plusX = knobX + KNOB_SIZE + 6;
+        minusX = std::max(baseX, minusX);
+        plusX = std::min(baseX + COLUMN_WIDTH - INLINE_BUTTON_SIZE, plusX);
+        int valueWidth = VALUE_WIDTH;
+        if (valueWidth > COLUMN_WIDTH) {
+            valueWidth = COLUMN_WIDTH;
+        }
+        int valueX = baseX + (COLUMN_WIDTH - valueWidth) / 2;
+        int valueY = knobY + KNOB_SIZE + 4;
         
         control.valueStatic = CreateWindowEx(
             0, L"STATIC",
             ss.str().c_str(),
             WS_CHILD | WS_VISIBLE | SS_CENTER,
-            MARGIN + LABEL_WIDTH + 10, absoluteY,
-            VALUE_WIDTH, 20,
+            valueX, valueY,
+            valueWidth, 20,
             hwnd_, nullptr, hInstance_, nullptr
         );
         SendMessage(control.valueStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
         
-        // Minus button
         control.minusButton = CreateWindowEx(
             0, L"BUTTON", L"-",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY,
-            20, 20,
+            minusX, buttonY,
+            INLINE_BUTTON_SIZE, INLINE_BUTTON_SIZE,
             hwnd_, nullptr, hInstance_, nullptr
         );
         SendMessage(control.minusButton, WM_SETFONT, (WPARAM)hFont, TRUE);
         
-        // Knob control
         control.knob = new KnobControl();
-        int knobSize = 50;
         control.knob->Create(hwnd_, hInstance_, 
-            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45, absoluteY - 15,
-            knobSize, 1000 + (int)plugin.parameters.size());
+            knobX, knobY,
+            KNOB_SIZE, 1000 + static_cast<int>(paramIndex));
         control.knob->SetRange(param.minimum, param.maximum);
         control.knob->SetValue(currentValue);
         
-        // Plus button
         control.plusButton = CreateWindowEx(
             0, L"BUTTON", L"+",
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45 + knobSize + 5, absoluteY,
-            20, 20,
+            plusX, buttonY,
+            INLINE_BUTTON_SIZE, INLINE_BUTTON_SIZE,
             hwnd_, nullptr, hInstance_, nullptr
         );
         SendMessage(control.plusButton, WM_SETFONT, (WPARAM)hFont, TRUE);
@@ -340,10 +353,11 @@ void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
         sliderToParam_[control.plusButton] = std::make_pair(plugin.nodeId, param.index);
         
         plugin.parameters.push_back(control);
-        yOffset += PARAM_HEIGHT;
+        ++paramIndex;
     }
     
-    plugin.height = yOffset;
+    int rows = static_cast<int>((paramIndex + PARAMETERS_PER_ROW - 1) / PARAMETERS_PER_ROW);
+    plugin.height = PLUGIN_HEADER_HEIGHT + rows * PARAM_HEIGHT;
 }
 
 void ActivePluginsPanel::DestroyParameterControls(ActivePluginInfo& plugin) {
@@ -1012,33 +1026,48 @@ void ActivePluginsPanel::RecalculateLayout() {
         // Update control positions
         for (auto& control : plugin.parameters) {
             int absoluteY = plugin.yPos + control.yOffset - scrollPos_;
-            
+            int baseX = control.xOffset;
+            int labelY = absoluteY;
+            int knobX = baseX + (COLUMN_WIDTH - KNOB_SIZE) / 2;
+            int knobY = labelY + LABEL_HEIGHT + 4;
+            int buttonY = knobY + (KNOB_SIZE - INLINE_BUTTON_SIZE) / 2;
+            int minusX = knobX - INLINE_BUTTON_SIZE - 6;
+            int plusX = knobX + KNOB_SIZE + 6;
+            minusX = std::max(baseX, minusX);
+            plusX = std::min(baseX + COLUMN_WIDTH - INLINE_BUTTON_SIZE, plusX);
+            int valueWidth = VALUE_WIDTH;
+            if (valueWidth > COLUMN_WIDTH) {
+                valueWidth = COLUMN_WIDTH;
+            }
+            int valueX = baseX + (COLUMN_WIDTH - valueWidth) / 2;
+            int valueY = knobY + KNOB_SIZE + 4;
+
             if (control.labelStatic) {
                 SetWindowPos(control.labelStatic, nullptr,
-                           MARGIN, absoluteY, 0, 0,
+                           baseX, labelY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
             if (control.valueStatic) {
                 SetWindowPos(control.valueStatic, nullptr,
-                           MARGIN + LABEL_WIDTH + 10, absoluteY, 0, 0,
+                           valueX, valueY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
             if (control.minusButton) {
                 SetWindowPos(control.minusButton, nullptr,
-                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY, 0, 0,
+                           minusX, buttonY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
             if (control.knob) {
                 HWND knobHwnd = control.knob->GetHandle();
                 if (knobHwnd) {
                     SetWindowPos(knobHwnd, nullptr,
-                               MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45, absoluteY - 15, 0, 0,
+                               knobX, knobY, 0, 0,
                                SWP_NOSIZE | SWP_NOZORDER);
                 }
             }
             if (control.plusButton) {
                 SetWindowPos(control.plusButton, nullptr,
-                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45 + 50 + 5, absoluteY, 0, 0,
+                           plusX, buttonY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
         }

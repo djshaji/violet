@@ -27,6 +27,9 @@ struct InlineParameterControl {
     KnobControl* knob;
     HWND plusButton;
     int yOffset;  // Offset from plugin top
+    int xOffset;  // Offset from left margin
+    int column;   // Column index within row
+    int row;      // Row index within plugin
 };
 
 // Represents a plugin in the active chain
@@ -148,7 +151,12 @@ private:
     static const int PLUGIN_HEADER_HEIGHT = 45;
     static const int BUTTON_WIDTH = 70;
     static const int BUTTON_HEIGHT = 24;
-    static const int PARAM_HEIGHT = 50;
+    static const int KNOB_SIZE = 120;
+    static const int INLINE_BUTTON_SIZE = 24;
+    static const int PARAMETERS_PER_ROW = 3;
+    static const int COLUMN_WIDTH = 220;
+    static const int LABEL_HEIGHT = 18;
+    static const int PARAM_HEIGHT = KNOB_SIZE + 50;
     static const int PLUGIN_SPACING = 5;
     static const int MARGIN = 10;
     static const int SLIDER_WIDTH = 200;
