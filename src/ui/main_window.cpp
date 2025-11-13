@@ -23,10 +23,20 @@ MainWindow::MainWindow()
     : hwnd_(nullptr)
     , hStatusBar_(nullptr)
     , hToolBar_(nullptr)
-    , hInstance_(nullptr) {
+    , hInstance_(nullptr)
+    , titleFont_(nullptr)
+    , normalFont_(nullptr)
+    , borderless_(false)  // Disabled for now to show menu bar
+    , titleBarHeight_(0)
+    , borderWidth_(0)
+    , isDragging_(false)
+    , dragOffset_{0, 0} {
 }
 
 MainWindow::~MainWindow() {
+    if (titleFont_) DeleteObject(titleFont_);
+    if (normalFont_) DeleteObject(normalFont_);
+    
     if (hwnd_) {
         DestroyWindow(hwnd_);
     }
@@ -34,6 +44,9 @@ MainWindow::~MainWindow() {
 
 bool MainWindow::Create(HINSTANCE hInstance) {
     hInstance_ = hInstance;
+    
+    // Initialize DPI scaling
+    DpiScaling::Instance().Initialize();
     
     // Register window class
     WNDCLASSEX wc = {};
@@ -43,7 +56,7 @@ bool MainWindow::Create(HINSTANCE hInstance) {
     wc.hInstance = hInstance;
     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wc.hbrBackground = Theme::Instance().GetBackgroundBrush();
     wc.lpszClassName = CLASS_NAME;
     wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
     
@@ -51,14 +64,21 @@ bool MainWindow::Create(HINSTANCE hInstance) {
         return false;
     }
     
-    // Create the window
+    // Create the window with modern borderless style
+    DWORD style = borderless_ ? (WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX) 
+                               : WS_OVERLAPPEDWINDOW;
+    DWORD exStyle = WS_EX_APPWINDOW;
+    
+    int scaledWidth = DPI_SCALE(DEFAULT_WIDTH);
+    int scaledHeight = DPI_SCALE(DEFAULT_HEIGHT);
+    
     hwnd_ = CreateWindowEx(
-        WS_EX_APPWINDOW,
+        exStyle,
         CLASS_NAME,
         L"Violet - LV2 Plugin Host",
-        WS_OVERLAPPEDWINDOW,
+        style,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        DEFAULT_WIDTH, DEFAULT_HEIGHT,
+        scaledWidth, scaledHeight,
         nullptr,
         nullptr,
         hInstance,
@@ -141,10 +161,42 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
         OnSize(LOWORD(lParam), HIWORD(lParam));
         return 0;
         
+    case WM_DPICHANGED: {
+        UINT dpi = HIWORD(wParam);
+        RECT* rect = reinterpret_cast<RECT*>(lParam);
+        OnDpiChanged(dpi, rect);
+        return 0;
+    }
+    
+    case WM_NCCALCSIZE: {
+        if (borderless_ && wParam == TRUE) {
+            LRESULT result = 0;
+            OnNcCalcSize(wParam, lParam, result);
+            return result;
+        }
+        break;
+    }
+    
+    case WM_NCHITTEST: {
+        LRESULT result = 0;
+        int x = GET_X_LPARAM(lParam);
+        int y = GET_Y_LPARAM(lParam);
+        OnNcHitTest(x, y, result);
+        if (result != 0) return result;
+        break;
+    }
+    
+    case WM_NCPAINT:
+        if (borderless_) {
+            OnNcPaint();
+            return 0;
+        }
+        break;
+        
     case WM_GETMINMAXINFO: {
         MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
-        mmi->ptMinTrackSize.x = MIN_WIDTH;
-        mmi->ptMinTrackSize.y = MIN_HEIGHT;
+        mmi->ptMinTrackSize.x = DPI_SCALE(MIN_WIDTH);
+        mmi->ptMinTrackSize.y = DPI_SCALE(MIN_HEIGHT);
         return 0;
     }
     
@@ -210,9 +262,18 @@ LRESULT MainWindow::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lParam) {
     default:
         return DefWindowProc(hwnd_, uMsg, wParam, lParam);
     }
+    
+    return DefWindowProc(hwnd_, uMsg, wParam, lParam);
 }
 
 void MainWindow::OnCreate() {
+    // Initialize DPI-aware fonts
+    titleBarHeight_ = DPI_SCALE(32);
+    borderWidth_ = DPI_SCALE(1);
+    
+    titleFont_ = Theme::Instance().CreateScaledFont(DPI_SCALE(14), FW_SEMIBOLD);
+    normalFont_ = Theme::Instance().CreateScaledFont(DPI_SCALE(11), FW_NORMAL);
+    
     // Load theme preferences
     ThemeManager::GetInstance().LoadFromConfig();
     
@@ -366,16 +427,11 @@ void MainWindow::OnPaint() {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(hwnd_, &ps);
     
-    // For now, just fill with window background color
-    FillRect(hdc, &ps.rcPaint, (HBRUSH)(COLOR_WINDOW + 1));
+    const auto& colors = Theme::Instance().GetColors();
     
-    // Draw some placeholder text
-    SetTextColor(hdc, RGB(100, 100, 100));
-    SetBkMode(hdc, TRANSPARENT);
-    RECT rect;
-    GetClientRect(hwnd_, &rect);
-    DrawText(hdc, L"Violet LV2 Plugin Host - Basic Window Created", -1, &rect, 
-             DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    // Fill with themed background color
+    HBRUSH bgBrush = Theme::Instance().GetBackgroundBrush();
+    FillRect(hdc, &ps.rcPaint, bgBrush);
     
     EndPaint(hwnd_, &ps);
 }
@@ -801,6 +857,124 @@ void MainWindow::OnAudioSettings() {
 void MainWindow::OnAbout() {
     AboutDialog aboutDialog;
     aboutDialog.Show(hwnd_);
+}
+
+void MainWindow::OnDpiChanged(UINT dpi, const RECT* rect) {
+    // Update fonts
+    if (titleFont_) DeleteObject(titleFont_);
+    if (normalFont_) DeleteObject(normalFont_);
+    
+    titleBarHeight_ = DPI_SCALE_WINDOW(32, hwnd_);
+    borderWidth_ = DPI_SCALE_WINDOW(1, hwnd_);
+    
+    titleFont_ = Theme::Instance().CreateScaledFont(DPI_SCALE_WINDOW(14, hwnd_), FW_SEMIBOLD);
+    normalFont_ = Theme::Instance().CreateScaledFont(DPI_SCALE_WINDOW(11, hwnd_), FW_NORMAL);
+    
+    // Resize window
+    DpiScaling::Instance().OnDpiChanged(hwnd_, dpi, rect);
+    
+    // Update layout
+    RECT clientRect;
+    GetClientRect(hwnd_, &clientRect);
+    OnSize(clientRect.right, clientRect.bottom);
+    
+    // Force repaint
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+void MainWindow::OnNcCalcSize(WPARAM wParam, LPARAM lParam, LRESULT& result) {
+    // Remove default window border while keeping drop shadow
+    if (wParam == TRUE) {
+        NCCALCSIZE_PARAMS* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
+        
+        // Adjust for borderless window
+        params->rgrc[0].top += 0;  // No adjustment needed for top
+        params->rgrc[0].bottom += 0;
+        params->rgrc[0].left += 0;
+        params->rgrc[0].right += 0;
+        
+        result = 0;
+    }
+}
+
+void MainWindow::OnNcPaint() {
+    // Custom non-client area painting for borderless window
+    HDC hdc = GetWindowDC(hwnd_);
+    if (!hdc) return;
+    
+    RECT rect;
+    GetWindowRect(hwnd_, &rect);
+    OffsetRect(&rect, -rect.left, -rect.top);
+    
+    // Draw custom title bar
+    const auto& colors = Theme::Instance().GetColors();
+    HBRUSH titleBrush = CreateSolidBrush(colors.surface);
+    RECT titleRect = rect;
+    titleRect.bottom = titleBarHeight_;
+    FillRect(hdc, &titleRect, titleBrush);
+    DeleteObject(titleBrush);
+    
+    // Draw title text
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, colors.onSurface);
+    SelectObject(hdc, titleFont_);
+    
+    RECT textRect = titleRect;
+    textRect.left += DPI_SCALE(12);
+    DrawText(hdc, L"Violet - LV2 Plugin Host", -1, &textRect, 
+             DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    
+    // Draw border
+    HPEN borderPen = CreatePen(PS_SOLID, borderWidth_, colors.border);
+    HPEN oldPen = (HPEN)SelectObject(hdc, borderPen);
+    HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+    SelectObject(hdc, oldPen);
+    SelectObject(hdc, oldBrush);
+    DeleteObject(borderPen);
+    
+    ReleaseDC(hwnd_, hdc);
+}
+
+void MainWindow::OnNcHitTest(int x, int y, LRESULT& result) {
+    if (!borderless_) {
+        result = 0;
+        return;
+    }
+    
+    RECT rect;
+    GetWindowRect(hwnd_, &rect);
+    
+    // Convert screen coordinates to window coordinates
+    int wx = x - rect.left;
+    int wy = y - rect.top;
+    
+    int borderSize = DPI_SCALE(8);
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+    
+    // Check for resize areas
+    bool isLeft = wx < borderSize;
+    bool isRight = wx > width - borderSize;
+    bool isTop = wy < borderSize;
+    bool isBottom = wy > height - borderSize;
+    
+    if (isTop && isLeft) result = HTTOPLEFT;
+    else if (isTop && isRight) result = HTTOPRIGHT;
+    else if (isBottom && isLeft) result = HTBOTTOMLEFT;
+    else if (isBottom && isRight) result = HTBOTTOMRIGHT;
+    else if (isTop) result = HTTOP;
+    else if (isBottom) result = HTBOTTOM;
+    else if (isLeft) result = HTLEFT;
+    else if (isRight) result = HTRIGHT;
+    else if (wy < titleBarHeight_) {
+        // Title bar area - allow dragging
+        // Check for window controls (close, min, max buttons would go here)
+        result = HTCAPTION;
+    }
+    else {
+        result = 0;
+    }
 }
 
 } // namespace violet

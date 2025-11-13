@@ -31,6 +31,7 @@ if host_machine.system() == 'windows'
   windows_deps += cpp.find_library('oleaut32', required : true)
   windows_deps += cpp.find_library('dwmapi', required : true)
   windows_deps += cpp.find_library('advapi32', required : true)
+  windows_deps += cpp.find_library('shcore', required : true)  # For DPI awareness
   windows_deps += cpp.find_library('ksuser', required : false)  # For audio format GUIDs
 endif
 
@@ -77,6 +78,10 @@ violet_sources = [
   'src/ui/plugin_parameters_window.cpp',
   'src/ui/audio_settings_dialog.cpp',
   'src/ui/about_dialog.cpp',
+  'src/ui/theme.cpp',
+  'src/ui/dpi_scaling.cpp',
+  'src/ui/modern_controls.cpp',
+  'src/ui/knob_control.cpp',
   'src/core/config_manager.cpp',
   'src/core/theme_manager.cpp',
   'src/core/session_manager.cpp',

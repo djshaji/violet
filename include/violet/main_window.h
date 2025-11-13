@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 #include <cstdint>
+#include "violet/theme.h"
+#include "violet/dpi_scaling.h"
 
 namespace violet {
 
@@ -49,6 +51,10 @@ private:
     void OnPaint();
     void OnSize(int width, int height);
     void OnCommand(WPARAM wParam, LPARAM lParam);
+    void OnDpiChanged(UINT dpi, const RECT* rect);
+    void OnNcCalcSize(WPARAM wParam, LPARAM lParam, LRESULT& result);
+    void OnNcPaint();
+    void OnNcHitTest(int x, int y, LRESULT& result);
     
     // UI creation
     void CreateControls();
@@ -105,6 +111,15 @@ private:
     static const int MIN_WIDTH = 800;
     static const int MIN_HEIGHT = 600;
     static const int PLUGIN_BROWSER_WIDTH = 250;
+    
+    // Modern UI
+    HFONT titleFont_;
+    HFONT normalFont_;
+    bool borderless_;
+    int titleBarHeight_;
+    int borderWidth_;
+    bool isDragging_;
+    POINT dragOffset_;
 };
 
 } // namespace violet

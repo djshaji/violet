@@ -2,6 +2,8 @@
 #include "violet/audio_processing_chain.h"
 #include "violet/plugin_manager.h"
 #include "violet/utils.h"
+#include "violet/modern_controls.h"
+#include "violet/knob_control.h"
 #include <windowsx.h>
 #include <algorithm>
 #include <sstream>
@@ -21,7 +23,8 @@ ActivePluginsPanel::ActivePluginsPanel()
     , hoveredPluginIndex_(-1)
     , scrollPos_(0)
     , maxScrollPos_(0)
-    , userIsInteracting_(false) {
+    , userIsInteracting_(false)
+    , activeSlider_(nullptr) {
 }
 
 ActivePluginsPanel::~ActivePluginsPanel() {
@@ -37,6 +40,9 @@ ActivePluginsPanel::~ActivePluginsPanel() {
 
 bool ActivePluginsPanel::Create(HWND parent, HINSTANCE hInstance, int x, int y, int width, int height) {
     hInstance_ = hInstance;
+    
+    // Register knob control class
+    KnobControl::RegisterClass(hInstance);
     
     // Register window class
     WNDCLASSEX wc = {};
@@ -295,20 +301,38 @@ void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
         );
         SendMessage(control.valueStatic, WM_SETFONT, (WPARAM)hFont, TRUE);
         
-        // Slider
-        control.slider = CreateWindowEx(
-            0, TRACKBAR_CLASS, L"",
-            WS_CHILD | WS_VISIBLE | TBS_HORZ | TBS_AUTOTICKS | TBS_NOTICKS,
-            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY + 2,
-            SLIDER_WIDTH, 20,
+        // Minus button
+        control.minusButton = CreateWindowEx(
+            0, L"BUTTON", L"-",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY,
+            20, 20,
             hwnd_, nullptr, hInstance_, nullptr
         );
+        SendMessage(control.minusButton, WM_SETFONT, (WPARAM)hFont, TRUE);
         
-        SendMessage(control.slider, TBM_SETRANGE, TRUE, MAKELONG(0, SLIDER_RESOLUTION));
-        int sliderPos = ValueToSliderPos(currentValue, param);
-        SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
+        // Knob control
+        control.knob = new KnobControl();
+        int knobSize = 50;
+        control.knob->Create(hwnd_, hInstance_, 
+            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45, absoluteY - 15,
+            knobSize, 1000 + (int)plugin.parameters.size());
+        control.knob->SetRange(param.minimum, param.maximum);
+        control.knob->SetValue(currentValue);
         
-        sliderToParam_[control.slider] = std::make_pair(plugin.nodeId, param.index);
+        // Plus button
+        control.plusButton = CreateWindowEx(
+            0, L"BUTTON", L"+",
+            WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+            MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45 + knobSize + 5, absoluteY,
+            20, 20,
+            hwnd_, nullptr, hInstance_, nullptr
+        );
+        SendMessage(control.plusButton, WM_SETFONT, (WPARAM)hFont, TRUE);
+        
+        sliderToParam_[control.knob->GetHandle()] = std::make_pair(plugin.nodeId, param.index);
+        sliderToParam_[control.minusButton] = std::make_pair(plugin.nodeId, param.index);
+        sliderToParam_[control.plusButton] = std::make_pair(plugin.nodeId, param.index);
         
         plugin.parameters.push_back(control);
         yOffset += PARAM_HEIGHT;
@@ -320,11 +344,20 @@ void ActivePluginsPanel::CreateParameterControls(ActivePluginInfo& plugin) {
 void ActivePluginsPanel::DestroyParameterControls(ActivePluginInfo& plugin) {
     for (auto& control : plugin.parameters) {
         if (control.labelStatic) {
-            sliderToParam_.erase(control.slider);
+            if (control.knob) {
+                sliderToParam_.erase(control.knob->GetHandle());
+            }
+            sliderToParam_.erase(control.minusButton);
+            sliderToParam_.erase(control.plusButton);
             DestroyWindow(control.labelStatic);
         }
         if (control.valueStatic) DestroyWindow(control.valueStatic);
-        if (control.slider) DestroyWindow(control.slider);
+        if (control.minusButton) DestroyWindow(control.minusButton);
+        if (control.knob) {
+            delete control.knob;
+            control.knob = nullptr;
+        }
+        if (control.plusButton) DestroyWindow(control.plusButton);
     }
     plugin.parameters.clear();
     plugin.height = PLUGIN_HEADER_HEIGHT;
@@ -347,9 +380,22 @@ void ActivePluginsPanel::UpdateParameterControls(ActivePluginInfo& plugin) {
         ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
         SetWindowText(control.valueStatic, ss.str().c_str());
         
-        // Update slider position
-        int sliderPos = ValueToSliderPos(value, control.info);
-        SendMessage(control.slider, TBM_SETPOS, TRUE, sliderPos);
+        // Only update knob if:
+        // 1. User is NOT currently interacting with any slider, OR
+        // 2. This specific knob is NOT the one being interacted with
+        bool shouldUpdate = !userIsInteracting_ || (control.knob && control.knob->GetHandle() != activeSlider_);
+        
+        if (shouldUpdate && control.knob) {
+            // Get current knob value
+            float currentValue = control.knob->GetValue();
+            
+            // Only update if the value has changed significantly
+            // Use a larger threshold for 0.0-1.0 ranges to avoid precision issues
+            float threshold = (control.info.maximum - control.info.minimum) / 100.0f;
+            if (std::abs(value - currentValue) > threshold) {
+                control.knob->SetValue(value);
+            }
+        }
     }
 }
 
@@ -376,14 +422,12 @@ void ActivePluginsPanel::OnSliderChange(HWND slider) {
     uint32_t nodeId = it->second.first;
     uint32_t paramIndex = it->second.second;
     
-    // Set interaction flag to prevent timer interference
-    userIsInteracting_ = true;
-    
     // Find the plugin and parameter info
     for (auto& plugin : plugins_) {
         if (plugin.nodeId == nodeId) {
             for (auto& control : plugin.parameters) {
                 if (control.parameterIndex == paramIndex) {
+                    // Get current slider position
                     int sliderPos = (int)SendMessage(slider, TBM_GETPOS, 0, 0);
                     float value = SliderPosToValue(sliderPos, control.info);
                     
@@ -395,9 +439,6 @@ void ActivePluginsPanel::OnSliderChange(HWND slider) {
                     std::wstringstream ss;
                     ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << value;
                     SetWindowText(control.valueStatic, ss.str().c_str());
-                    
-                    // Reset interaction flag after a delay
-                    SetTimer(hwnd_, TIMER_ID_INTERACTION, 150, nullptr); // Reset after 150ms
                     
                     return;
                 }
@@ -490,6 +531,9 @@ LRESULT ActivePluginsPanel::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lPara
     case WM_TIMER:
         OnTimer(wParam);
         return 0;
+        
+    case WM_NOTIFY:
+        return OnNotify(wParam, lParam);
         
     default:
         return DefWindowProc(hwnd_, uMsg, wParam, lParam);
@@ -593,6 +637,70 @@ void ActivePluginsPanel::OnCommand(WPARAM wParam, LPARAM lParam) {
         return;
     }
     
+    // Check for parameter +/- buttons
+    auto paramIt = sliderToParam_.find(hwndCtl);
+    if (paramIt != sliderToParam_.end()) {
+        uint32_t nodeId = paramIt->second.first;
+        uint32_t paramIndex = paramIt->second.second;
+        
+        // Find the control to determine which button was clicked
+        for (auto& plugin : plugins_) {
+            if (plugin.nodeId == nodeId) {
+                for (auto& control : plugin.parameters) {
+                    if (control.parameterIndex == paramIndex) {
+                        bool isMinus = (hwndCtl == control.minusButton);
+                        bool isPlus = (hwndCtl == control.plusButton);
+                        
+                        if (isMinus || isPlus) {
+                            // Set interaction tracking
+                            userIsInteracting_ = true;
+                            if (control.knob) {
+                                activeSlider_ = control.knob->GetHandle();
+                            }
+                            
+                            // Kill any existing timer
+                            KillTimer(hwnd_, TIMER_ID_INTERACTION);
+                            
+                            // Get current value from knob
+                            float currentValue = control.knob ? control.knob->GetValue() : control.info.defaultValue;
+                            
+                            // Calculate step size (1% of range, or 1 for integers)
+                            float step;
+                            if (control.info.isInteger) {
+                                step = 1.0f;
+                            } else {
+                                step = (control.info.maximum - control.info.minimum) * 0.01f;
+                            }
+                            
+                            // Adjust value
+                            float newValue = currentValue + (isPlus ? step : -step);
+                            newValue = std::max(control.info.minimum, std::min(control.info.maximum, newValue));
+                            
+                            // Update knob and parameter
+                            if (control.knob) {
+                                control.knob->SetValue(newValue);
+                            }
+                            
+                            if (processingChain_) {
+                                processingChain_->SetParameter(nodeId, paramIndex, newValue);
+                            }
+                            
+                            // Update value display
+                            std::wstringstream ss;
+                            ss << std::fixed << std::setprecision(control.info.isInteger ? 0 : 2) << newValue;
+                            SetWindowText(control.valueStatic, ss.str().c_str());
+                            
+                            // Start reset timer
+                            SetTimer(hwnd_, TIMER_ID_INTERACTION, 500, nullptr);
+                            
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     // Check for plugin-specific buttons
     auto btnIt = buttonToNode_.find(hwndCtl);
     if (btnIt != buttonToNode_.end()) {
@@ -655,9 +763,51 @@ void ActivePluginsPanel::OnCommand(WPARAM wParam, LPARAM lParam) {
 }
 
 void ActivePluginsPanel::OnHScroll(WPARAM wParam, LPARAM lParam) {
-    HWND slider = reinterpret_cast<HWND>(lParam);
-    if (slider) {
-        OnSliderChange(slider);
+    HWND control = reinterpret_cast<HWND>(lParam);
+    if (!control) return;
+    
+    UINT scrollCode = LOWORD(wParam);
+    
+    // Check if this is a knob control
+    auto it = sliderToParam_.find(control);
+    if (it != sliderToParam_.end()) {
+        if (scrollCode == TB_ENDTRACK) {
+            // Dragging ended, start the reset timer
+            SetTimer(hwnd_, TIMER_ID_INTERACTION, 500, nullptr);
+            return;
+        }
+        
+        // During dragging
+        userIsInteracting_ = true;
+        activeSlider_ = control;
+        
+        // Kill any existing timer to prevent premature reset during dragging
+        KillTimer(hwnd_, TIMER_ID_INTERACTION);
+        
+        // Find the knob and update parameter
+        uint32_t nodeId = it->second.first;
+        uint32_t paramIndex = it->second.second;
+        
+        for (auto& plugin : plugins_) {
+            if (plugin.nodeId == nodeId) {
+                for (auto& ctrl : plugin.parameters) {
+                    if (ctrl.parameterIndex == paramIndex && ctrl.knob && ctrl.knob->GetHandle() == control) {
+                        float value = ctrl.knob->GetValue();
+                        
+                        if (processingChain_) {
+                            processingChain_->SetParameter(nodeId, paramIndex, value);
+                        }
+                        
+                        // Update value display
+                        std::wstringstream ss;
+                        ss << std::fixed << std::setprecision(ctrl.info.isInteger ? 0 : 2) << value;
+                        SetWindowText(ctrl.valueStatic, ss.str().c_str());
+                        
+                        return;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -714,10 +864,16 @@ void ActivePluginsPanel::OnTimer(WPARAM timerId) {
             }
         }
     } else if (timerId == TIMER_ID_INTERACTION) {
-        // Reset interaction flag
+        // Reset interaction flag and clear active slider
         userIsInteracting_ = false;
+        activeSlider_ = nullptr;
         KillTimer(hwnd_, TIMER_ID_INTERACTION);
     }
+}
+
+LRESULT ActivePluginsPanel::OnNotify(WPARAM wParam, LPARAM lParam) {
+    // No custom drawing - use default trackbar rendering
+    return 0;
 }
 
 void ActivePluginsPanel::DrawPlugin(HDC hdc, const ActivePluginInfo& plugin) {
@@ -826,9 +982,22 @@ void ActivePluginsPanel::RecalculateLayout() {
                            MARGIN + LABEL_WIDTH + 10, absoluteY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
-            if (control.slider) {
-                SetWindowPos(control.slider, nullptr,
-                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY + 2, 0, 0,
+            if (control.minusButton) {
+                SetWindowPos(control.minusButton, nullptr,
+                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 20, absoluteY, 0, 0,
+                           SWP_NOSIZE | SWP_NOZORDER);
+            }
+            if (control.knob) {
+                HWND knobHwnd = control.knob->GetHandle();
+                if (knobHwnd) {
+                    SetWindowPos(knobHwnd, nullptr,
+                               MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45, absoluteY - 15, 0, 0,
+                               SWP_NOSIZE | SWP_NOZORDER);
+                }
+            }
+            if (control.plusButton) {
+                SetWindowPos(control.plusButton, nullptr,
+                           MARGIN + LABEL_WIDTH + VALUE_WIDTH + 45 + 50 + 5, absoluteY, 0, 0,
                            SWP_NOSIZE | SWP_NOZORDER);
             }
         }

@@ -34,6 +34,47 @@ The user interface of Violet is designed to be clean and straightforward. It fea
 - Theme Support: Light and dark mode options for user preference.
 - Modern Windows styling: Consistent with Windows 10/11 design guidelines.
 
+## Modern UI and Scaling
+
+✅ **IMPLEMENTED** - Violet now features a modern, scalable user interface:
+
+- **Modern Look**: 
+  - ✅ Standard window with menu bar for full compatibility
+  - ✅ Modern color palette with Light (white/purple) and Dark (dark gray/light purple) themes
+  - ✅ Segoe UI font with ClearType antialiasing
+  - ✅ Minimal, flat-styled controls with 4px rounded corners
+  - ✅ Material Design-inspired color schemes
+  
+- **UI Scaling**: 
+  - ✅ Full Per-Monitor DPI v2 awareness (Windows 10+)
+  - ✅ Automatic scaling for all UI elements (fonts, icons, layouts)
+  - ✅ Scales from 96 DPI to 384+ DPI displays
+  - ✅ Seamless window resizing when moved between monitors
+  - ✅ Backwards compatible with Windows 7/8
+  
+- **Custom Styling**: 
+  - ✅ Modern flat buttons with hover states
+  - ✅ Custom sliders with circular thumbs
+  - ✅ Styled checkboxes and text inputs
+  - ✅ Progress bars and combo boxes
+  - ✅ Panels with optional elevation
+  
+- **Theme System**: 
+  - ✅ Light and Dark themes
+  - ✅ Cached GDI resources for performance
+  - ✅ Theme switching API (`Theme::Instance().SetMode()`)
+  - ✅ Menu-accessible theme switching (View > Theme)
+
+**Technical Details:**
+- **Color Schemes**: Material Design-inspired with purple primary (#BB86FC dark, #6200EE light)
+- **Typography**: Segoe UI 11pt regular, 14pt semibold for titles
+- **Window Style**: Standard window frame with visible menu bar
+- **DPI Support**: Windows 10+ per-monitor v2, falls back to system DPI on older Windows
+
+See [MODERN_UI.md](MODERN_UI.md) for complete implementation details and usage examples.
+
+These improvements make Violet visually consistent with modern Windows 10/11 applications and ensure crisp, scalable UI on all display types including 4K and higher-resolution monitors.
+
 ## Audio Engine
 Violet's audio engine is built on top of the WASAPI backend, ensuring low-latency audio processing. Key features of the audio engine include:
 - Real-time audio processing capabilities.

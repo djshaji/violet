@@ -13,6 +13,7 @@ namespace violet {
 
 class AudioProcessingChain;
 class PluginInstance;
+class KnobControl;
 
 // Parameter control for inline display
 struct InlineParameterControl {
@@ -20,7 +21,9 @@ struct InlineParameterControl {
     ParameterInfo info;
     HWND labelStatic;
     HWND valueStatic;
-    HWND slider;
+    HWND minusButton;
+    KnobControl* knob;
+    HWND plusButton;
     int yOffset;  // Offset from plugin top
 };
 
@@ -92,6 +95,7 @@ private:
     void OnHScroll(WPARAM wParam, LPARAM lParam);
     void OnVScroll(WPARAM wParam, LPARAM lParam);
     void OnTimer(WPARAM timerId);
+    LRESULT OnNotify(WPARAM wParam, LPARAM lParam);
     void OnDropFiles(HDROP hDrop);
     
     // Drawing functions
@@ -157,6 +161,7 @@ private:
     
     // User interaction state
     bool userIsInteracting_;
+    HWND activeSlider_;  // Track which slider is currently being interacted with
     
     // Window class
     static const wchar_t* CLASS_NAME;
