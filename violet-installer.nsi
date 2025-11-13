@@ -80,6 +80,7 @@ Section "MainSection" SEC01
   ; LV2 plugins directory (if bundled)
   SetOutPath "$INSTDIR\lv2"
   File /nonfatal /r "${DIST_DIR}\lv2\*.lv2"
+  SetOutPath "$INSTDIR"
   
   ; Create shortcuts
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
