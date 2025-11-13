@@ -53,10 +53,10 @@ ColorScheme Theme::LightTheme() {
 
 ColorScheme Theme::DarkTheme() {
     ColorScheme colors;
-    colors.background = RGB(18, 18, 18);         // Very dark gray
+    colors.background = RGB(180, 180, 180);         // Very dark gray
     colors.surface = RGB(30, 30, 30);            // Dark gray
     colors.surfaceVariant = RGB(42, 42, 42);     // Lighter dark gray
-    colors.primary = RGB(187, 134, 252);         // Light purple
+    colors.primary = RGB(255, 0, 0);         // Light purple
     colors.primaryVariant = RGB(208, 170, 255);  // Lighter purple
     colors.secondary = RGB(3, 218, 198);         // Teal
     colors.onBackground = RGB(230, 230, 230);    // Light gray
@@ -65,7 +65,7 @@ ColorScheme Theme::DarkTheme() {
     colors.border = RGB(60, 60, 60);             // Medium dark gray
     colors.borderHover = RGB(90, 90, 90);        // Lighter gray
     colors.shadow = RGB(0, 0, 0);                // Black (with alpha)
-    colors.accent = RGB(187, 134, 252);          // Light purple (same as primary)
+    colors.accent = RGB(255, 0, 0);          // Light purple (same as primary)
     colors.error = RGB(239, 83, 80);             // Light red
     colors.success = RGB(102, 187, 106);         // Light green
     colors.warning = RGB(255, 167, 38);          // Light orange
