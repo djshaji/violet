@@ -2,6 +2,10 @@
 
 A lightweight LV2 plugin host for real-time audio processing on Windows.
 
+## Screenshots
+![vio1](https://github.com/user-attachments/assets/4d64c90a-3a7b-4e20-bdeb-fa14aadbc37d)
+
+
 ## Features
 
 ### ✅ Implemented (v0.78)
